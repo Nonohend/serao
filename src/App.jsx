@@ -1,13 +1,30 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
+import { supabase } from './lib/supabase';
 
-
-/* ─ STORAGE ─ */
+/* ─ STORAGE (legacy — being migrated to Supabase) ─ */
 const ls={
   get:(k,d)=>{try{const v=localStorage.getItem('serao_'+k);return v?JSON.parse(v):d;}catch{return d;}},
   set:(k,v)=>{try{localStorage.setItem('serao_'+k,JSON.stringify(v));}catch{}},
 };
 let bc; try{bc=new BroadcastChannel('serao_chat');}catch{}
+
+/* ─ Map a Supabase product row into the shape our components expect ─ */
+const mapProductRow = (r) => ({
+  id: r.id,
+  nom: r.nom,
+  prix: Number(r.prix) || 0,
+  note: Number(r.note) || 5.0,
+  emoji: r.emoji,
+  img: r.image_url,
+  badge: r.badge,
+  cat: r.category?.nom || r.cat || '',
+  region: r.region || '',
+  deliv: r.deliv || '3-5 jours',
+  vendeur_id: r.vendeur_id,
+  description: r.description,
+  stock: r.stock,
+});
 
 /* ─ HELPERS ─ */
 const fmt=n=>n.toLocaleString('fr-FR').replace(/\u202f/g,' ').replace(/,/g,' ')+' Ar';
@@ -62,15 +79,33 @@ function ProdCard({p,onBuy}){
 }
 
 /* ─ PAYMENT MODAL ─ */
-function PaymentModal({product, onClose, showToast}){
+function PaymentModal({product, onClose, showToast, user}){
   const[method,setMethod]=useState('');
   const[phone,setPhone]=useState('');
   const[status,setStatus]=useState('select'); // select | processing | success
+  const[orderId,setOrderId]=useState(null);
   const methods=[{id:'mvola',icon:'📱',name:'MVola',color:'#E30913'},{id:'orange',icon:'🟠',name:'Orange Money',color:'#FF6600'},{id:'airtel',icon:'❤️',name:'Airtel Money',color:'#FF0000'}];
-  const pay=()=>{
+  const pay=async()=>{
     if(!method||!phone){showToast('Sélectionnez un moyen de paiement et entrez votre numéro','err');return;}
     setStatus('processing');
-    setTimeout(()=>setStatus('success'),2500);
+    // simulate gateway delay then create real order row in Supabase
+    setTimeout(async()=>{
+      try{
+        const{data,error}=await supabase.from('orders').insert({
+          acheteur_id:user?.id,
+          product_id:product?.id,
+          vendeur_id:product?.vendeur_id||null,
+          product_nom:product?.nom||'',
+          montant:product?.prix||0,
+          pay_method:method,
+          pay_tx_ref:'TXN-'+Date.now().toString().slice(-8),
+          status:'confirme',
+        }).select().single();
+        if(error){console.warn('order insert failed',error);showToast('Erreur enregistrement commande','err');setStatus('select');return;}
+        setOrderId(data.id);
+        setStatus('success');
+      }catch(ex){console.warn(ex);setStatus('select');}
+    },2200);
   };
   return(
     <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
@@ -116,7 +151,7 @@ function PaymentModal({product, onClose, showToast}){
             <div style={{fontFamily:'var(--font-display)',fontSize:'24px',fontWeight:800,color:'var(--emerald-glow)',marginBottom:'8px'}}>Paiement réussi !</div>
             <div style={{color:'var(--muted)',fontSize:'15px',marginBottom:'24px'}}>{product?.nom} · {fmt(product?.prix||0)}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',fontSize:'13px',marginBottom:'24px'}}>
-              <div style={{padding:'12px',background:'var(--glass-1)',borderRadius:'var(--r-md)',textAlign:'center'}}><div style={{color:'var(--muted)',marginBottom:'4px'}}>Réf. transaction</div><div style={{fontWeight:700,color:'var(--cyan-light)'}}>#TXN-{Date.now().toString().slice(-8)}</div></div>
+              <div style={{padding:'12px',background:'var(--glass-1)',borderRadius:'var(--r-md)',textAlign:'center'}}><div style={{color:'var(--muted)',marginBottom:'4px'}}>Réf. commande</div><div style={{fontWeight:700,color:'var(--cyan-light)'}}>{orderId||'…'}</div></div>
               <div style={{padding:'12px',background:'var(--glass-1)',borderRadius:'var(--r-md)',textAlign:'center'}}><div style={{color:'var(--muted)',marginBottom:'4px'}}>Délai livraison</div><div style={{fontWeight:700,color:'var(--cyan-light)'}}>{product?.deliv}</div></div>
             </div>
             <Btn onClick={onClose} style={{width:'100%'}}>Retour au catalogue</Btn>
@@ -368,20 +403,34 @@ function AuthModal({onAuth,onClose}){
   const[role,setRole]=useState('acheteur');
   const[f,setF]=useState({nom:'',email:'',password:''});
   const[err,setErr]=useState('');
+  const[busy,setBusy]=useState(false);
   const set=(k,v)=>setF(ff=>({...ff,[k]:v}));
-  const submit=e=>{
+  const submit=async e=>{
     e.preventDefault();setErr('');
-    const users=ls.get('users',DEF_USERS);
-    if(tab==='login'){
-      const u=users.find(u=>u.email===f.email&&u.password===f.password);
-      if(!u){setErr('Email ou mot de passe incorrect.');return;}
-      onAuth(u);
-    }else{
-      if(!f.nom||!f.email||!f.password){setErr('Tous les champs sont requis.');return;}
-      if(users.find(u=>u.email===f.email)){setErr('Cet email est déjà utilisé.');return;}
-      const nu={id:'u'+Date.now(),nom:f.nom,email:f.email,password:f.password,role,createdAt:new Date().toISOString().slice(0,10)};
-      ls.set('users',[...users,nu]);onAuth(nu);
-    }
+    if(!f.email||!f.password){setErr('Email et mot de passe requis.');return;}
+    setBusy(true);
+    try{
+      if(tab==='login'){
+        const {data,error}=await supabase.auth.signInWithPassword({email:f.email,password:f.password});
+        if(error){setErr(error.message==='Invalid login credentials'?'Email ou mot de passe incorrect.':error.message);return;}
+        // Fetch profile row (created by trigger on signup)
+        const {data:profile}=await supabase.from('profiles').select('*').eq('id',data.user.id).single();
+        onAuth({...data.user,...profile});
+      }else{
+        if(!f.nom){setErr('Nom complet requis.');return;}
+        if(f.password.length<6){setErr('Mot de passe : minimum 6 caractères.');return;}
+        const {data,error}=await supabase.auth.signUp({
+          email:f.email,
+          password:f.password,
+          options:{data:{nom:f.nom,role}}
+        });
+        if(error){setErr(error.message);return;}
+        if(!data.session){setErr('Vérifie ton email pour confirmer ton inscription.');return;}
+        const {data:profile}=await supabase.from('profiles').select('*').eq('id',data.user.id).single();
+        onAuth({...data.user,...profile});
+      }
+    }catch(ex){setErr(ex.message||'Erreur inconnue');}
+    finally{setBusy(false);}
   };
   return(<div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
     <div className="modal">
@@ -411,12 +460,8 @@ function AuthModal({onAuth,onClose}){
         <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={f.email} onChange={e=>set('email',e.target.value)} placeholder="votre@email.com" autoFocus={tab==='login'}/></div>
         <div className="fg"><label className="fl">Mot de passe</label><input className="fi" type="password" value={f.password} onChange={e=>set('password',e.target.value)} placeholder={tab==='login'?'Votre mot de passe':'Choisir un mot de passe'}/></div>
         {err&&<p style={{color:'#fca5a5',fontSize:'13px',marginBottom:'12px'}}>{err}</p>}
-        <Btn type="submit" style={{width:'100%'}}>{tab==='login'?'Se connecter →':'Créer mon compte →'}</Btn>
+        <Btn type="submit" style={{width:'100%'}} disabled={busy}>{busy?'…':(tab==='login'?'Se connecter →':'Créer mon compte →')}</Btn>
       </form>
-      {tab==='login'&&<div style={{marginTop:'16px',padding:'14px',background:'var(--glass-emerald)',border:'1px solid rgba(20,123,99,0.2)',borderRadius:'var(--r-md)',fontSize:'12px',color:'var(--muted)'}}>
-        <strong style={{color:'var(--emerald-glow)',display:'block',marginBottom:'6px'}}>Comptes démo</strong>
-        vendeur@sava.mg / vendeur123<br/>ravo@gmail.com / acheteur123<br/>admin@serao.mg / serao2026
-      </div>}
     </div>
   </div>);
 }
@@ -721,7 +766,8 @@ function App(){
   const[menu,setMenu]=useState(false);
   const[toast,setToast]=useState('');
   const[toastType,setToastType]=useState('ok');
-  const[user,setUser]=useState(()=>ls.get('current_user',null));
+  const[user,setUser]=useState(null);
+  const[authLoading,setAuthLoading]=useState(true);
   const[showAuth,setShowAuth]=useState(false);
   const[showChat,setShowChat]=useState(false);
   const[adminOpen,setAdminOpen]=useState(false);
@@ -732,14 +778,73 @@ function App(){
   const logoTimer=useRef(null);
   const userMenuRef=useRef(null);
 
-  const[products,setProducts]=useState(()=>ls.get('products',DEF_PRODUCTS));
+  const[products,setProducts]=useState([]);
   const[articles]=useState(()=>ls.get('articles',DEF_ARTICLES));
-  const[orders,setOrders]=useState(()=>ls.get('orders',DEF_ORDERS));
+  const[orders,setOrders]=useState([]);
 
   const nav=p=>{setPage(p);setMenu(false);setUserMenu(false);window.scrollTo({top:0,behavior:'smooth'});};
   const showToast=(msg,type='ok')=>{setToast(msg);setToastType(type);setTimeout(()=>setToast(''),4000);};
-  const login=u=>{setUser(u);ls.set('current_user',u);setShowAuth(false);showToast(`Bienvenue, ${u.nom} ! 👋`);};
-  const logout=()=>{setUser(null);ls.set('current_user',null);setShowChat(false);setUserMenu(false);showToast('Déconnecté');};
+
+  // Helper: fetch the profile row for a given Supabase user
+  const fetchProfile=async(authUser)=>{
+    if(!authUser)return null;
+    const{data}=await supabase.from('profiles').select('*').eq('id',authUser.id).single();
+    return data?{...authUser,...data}:authUser;
+  };
+
+  // Restore session on load + subscribe to auth changes
+  useEffect(()=>{
+    let mounted=true;
+    supabase.auth.getSession().then(async({data:{session}})=>{
+      if(!mounted)return;
+      if(session?.user){
+        const u=await fetchProfile(session.user);
+        setUser(u);
+      }
+      setAuthLoading(false);
+    });
+    const{data:sub}=supabase.auth.onAuthStateChange(async(_evt,session)=>{
+      if(session?.user){const u=await fetchProfile(session.user);setUser(u);}
+      else setUser(null);
+    });
+    return()=>{mounted=false;sub.subscription.unsubscribe();};
+  },[]);
+
+  // Load products from Supabase (anyone can read active products via RLS)
+  useEffect(()=>{
+    let mounted=true;
+    (async()=>{
+      const{data,error}=await supabase
+        .from('products')
+        .select('*,category:categories(nom,slug,emoji)')
+        .eq('active',true)
+        .order('created_at',{ascending:false});
+      if(!mounted)return;
+      if(error){console.warn('products load error',error);return;}
+      setProducts((data||[]).map(mapProductRow));
+    })();
+    return()=>{mounted=false;};
+  },[]);
+
+  // Load orders when user logs in (RLS only returns own orders)
+  useEffect(()=>{
+    if(!user){setOrders([]);return;}
+    let mounted=true;
+    (async()=>{
+      const{data,error}=await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at',{ascending:false});
+      if(!mounted||error)return;
+      setOrders((data||[]).map(o=>({
+        id:o.id,produit:o.product_nom,client:o.acheteur_id===user.id?(user.nom||'Moi'):'',montant:Number(o.montant),status:o.status,date:o.created_at?.slice(0,10)
+      })));
+    })();
+    return()=>{mounted=false;};
+  },[user]);
+
+  const login=u=>{setUser(u);setShowAuth(false);showToast(`Bienvenue, ${u.nom||u.email} ! 👋`);};
+  const logout=async()=>{await supabase.auth.signOut();setUser(null);setShowChat(false);setUserMenu(false);showToast('Déconnecté');};
   const onBuy=p=>{if(user){setPayProduct(p);}else{setShowAuth(true);}};
 
   useEffect(()=>{
@@ -765,7 +870,7 @@ function App(){
 
   return(<div className="app-root">
     {showAuth&&<AuthModal onAuth={login} onClose={()=>setShowAuth(false)}/>}
-    {payProduct&&<PaymentModal product={payProduct} onClose={()=>{setPayProduct(null);setCart(c=>c+1);}} showToast={showToast}/>}
+    {payProduct&&<PaymentModal product={payProduct} user={user} onClose={()=>{setPayProduct(null);setCart(c=>c+1);}} showToast={showToast}/>}
     {adminOpen&&!adminAuth&&(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setAdminOpen(false)}}>
         <div className="modal">
@@ -794,8 +899,8 @@ function App(){
             </button>
             <div style={{position:'relative'}} ref={userMenuRef}>
               <div className="user-pill" onClick={()=>setUserMenu(s=>!s)}>
-                <div className="u-av">{initials(user.nom)}</div>
-                <div><div className="u-name">{user.nom.split(' ')[0]}</div><div className="u-role">{user.role}</div></div>
+                <div className="u-av">{initials(user.nom||user.email||'?')}</div>
+                <div><div className="u-name">{(user.nom||user.email||'').split(' ')[0]||'…'}</div><div className="u-role">{user.role||'membre'}</div></div>
               </div>
               {userMenu&&<div className="user-dropdown">
                 <div className="u-drop-item" onClick={()=>{setShowChat(true);setUserMenu(false);}}>💬 Mes messages{unread>0&&` (${unread})`}</div>
