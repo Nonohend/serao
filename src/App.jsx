@@ -299,45 +299,76 @@ function KYCFlow({showToast}){
 /* ─ CHAT WINDOW ─ */
 function ChatWindow({user,onClose}){
   const[active,setActive]=useState({type:'channel',id:'general',name:'# Général',sub:'Discussion générale'});
-  const[msgs,setMsgs]=useState(()=>ls.get('messages',DEF_MSGS));
-  const[users]=useState(()=>ls.get('users',DEF_USERS));
+  const[msgs,setMsgs]=useState([]);
+  const[users,setUsers]=useState([]);
   const[input,setInput]=useState('');
   const[search,setSearch]=useState('');
+  const[sending,setSending]=useState(false);
   const bottomRef=useRef();
   const inputRef=useRef();
 
+  // Initial load: profiles + messages
   useEffect(()=>{
-    const h=e=>{if(e.data?.type==='new_msg')setMsgs(ls.get('messages',DEF_MSGS));};
-    if(bc)bc.addEventListener('message',h);
-    return()=>{if(bc)bc.removeEventListener('message',h);};
+    let mounted=true;
+    (async()=>{
+      const[p,m]=await Promise.all([
+        supabase.from('profiles').select('id,nom,email,role'),
+        supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(500),
+      ]);
+      if(!mounted)return;
+      setUsers(p.data||[]);
+      setMsgs(m.data||[]);
+    })();
+    return()=>{mounted=false;};
   },[]);
+
+  // Realtime subscription on messages table
+  useEffect(()=>{
+    const ch=supabase
+      .channel('serao-messages')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},payload=>{
+        setMsgs(prev=>prev.some(m=>m.id===payload.new.id)?prev:[...prev,payload.new]);
+      })
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[msgs,active]);
 
+  // Filtering helpers (new schema: channel='general' OR DMs via from_user/to_user)
   const threadMsgs=msgs.filter(m=>{
-    if(active.type==='channel')return m.to===`channel:${active.id}`;
-    return(m.from===user.id&&m.to===active.id)||(m.from===active.id&&m.to===user.id);
+    if(active.type==='channel')return m.channel===active.id;
+    return(m.from_user===user.id&&m.to_user===active.id)||(m.from_user===active.id&&m.to_user===user.id);
   });
   const unread=(target)=>msgs.filter(m=>{
-    if(target.type==='channel')return m.to===`channel:${target.id}`&&!(m.read||[]).includes(user.id);
-    return m.from===target.id&&m.to===user.id&&!(m.read||[]).includes(user.id);
+    if(target.type==='channel')return m.channel===target.id&&!(m.read_by||[]).includes(user.id);
+    return m.from_user===target.id&&m.to_user===user.id&&!(m.read_by||[]).includes(user.id);
   }).length;
   const lastMsg=(id,type)=>{
-    const ms=msgs.filter(m=>type==='channel'?m.to===`channel:${id}`:(m.from===id&&m.to===user.id)||(m.from===user.id&&m.to===id));
+    const ms=msgs.filter(m=>type==='channel'?m.channel===id:(m.from_user===id&&m.to_user===user.id)||(m.from_user===user.id&&m.to_user===id));
     const l=ms[ms.length-1];return l?l.content.slice(0,28)+(l.content.length>28?'...':''):'';
   };
-  const send=()=>{
-    if(!input.trim())return;
-    const nm={id:'m'+Date.now(),from:user.id,to:active.type==='channel'?`channel:${active.id}`:active.id,content:input.trim(),ts:new Date().toISOString(),read:[user.id]};
-    const up=[...msgs,nm];setMsgs(up);ls.set('messages',up);
-    if(bc)bc.postMessage({type:'new_msg'});
-    setInput('');inputRef.current?.focus();
+  const send=async()=>{
+    if(!input.trim()||sending)return;
+    setSending(true);
+    const text=input.trim();
+    setInput('');
+    const payload={
+      from_user:user.id,
+      content:text,
+      ...(active.type==='channel'?{channel:active.id,to_user:null}:{to_user:active.id,channel:null}),
+    };
+    const{error}=await supabase.from('messages').insert(payload);
+    if(error){console.warn('msg send error',error);setInput(text);}
+    setSending(false);
+    inputRef.current?.focus();
   };
   const selectConv=t=>{setActive(t);};
   const getUser=id=>users.find(u=>u.id===id)||{nom:'?',id};
   const channels=PUB_CHANNELS.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||!search);
-  const dms=users.filter(u=>u.id!==user.id&&(u.nom.toLowerCase().includes(search.toLowerCase())||!search));
+  const dms=users.filter(u=>u.id!==user.id&&((u.nom||'').toLowerCase().includes(search.toLowerCase())||!search));
   const grouped=[];let lastDay='';
-  threadMsgs.forEach(m=>{const day=fmtD(m.ts);if(day!==lastDay){grouped.push({type:'sep',day});lastDay=day;}grouped.push({type:'msg',...m});});
+  threadMsgs.forEach(m=>{const ts=m.created_at||m.ts;const day=fmtD(ts);if(day!==lastDay){grouped.push({type:'sep',day});lastDay=day;}grouped.push({type:'msg',...m,_ts:ts,_from:m.from_user||m.from});});
 
   return(<div className="chat-win">
     <div className="chat-side">
@@ -377,13 +408,13 @@ function ChatWindow({user,onClose}){
         {grouped.length===0&&<div className="chat-empty"><div style={{fontSize:'48px'}}>💬</div><div style={{fontWeight:600,color:'var(--text)'}}>Démarrez la conversation</div><div style={{fontSize:'14px',color:'var(--muted)'}}>Bienvenue dans {active.name}</div></div>}
         {grouped.map((item,i)=>{
           if(item.type==='sep')return<div key={i} className="chat-date-sep"><span>{item.day}</span></div>;
-          const sender=getUser(item.from);const mine=item.from===user.id;
+          const sender=getUser(item._from);const mine=item._from===user.id;
           return(<div key={item.id} className={'msg-row'+(mine?' mine':'')}>
-            {!mine&&<div className="msg-av" style={{background:avColor(sender.nom)}}>{initials(sender.nom)}</div>}
+            {!mine&&<div className="msg-av" style={{background:avColor(sender.nom||'?')}}>{initials(sender.nom||'?')}</div>}
             <div className="msg-bubbles">
-              {!mine&&active.type==='channel'&&<div className="msg-sender">{sender.nom}</div>}
+              {!mine&&active.type==='channel'&&<div className="msg-sender">{sender.nom||sender.email||'Anon'}</div>}
               <div className={'bubble '+(mine?'bubble-mine':'bubble-them')}>{item.content}</div>
-              <div className="msg-time">{fmtT(item.ts)}{mine&&' ✓✓'}</div>
+              <div className="msg-time">{fmtT(item._ts)}{mine&&' ✓✓'}</div>
             </div>
           </div>);
         })}
@@ -391,7 +422,7 @@ function ChatWindow({user,onClose}){
       </div>
       <div className="chat-input-row">
         <textarea ref={inputRef} className="chat-input" placeholder={`Message ${active.name}...`} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} rows={1}/>
-        <button className="chat-send" onClick={send} disabled={!input.trim()}><SendSVG/></button>
+        <button className="chat-send" onClick={send} disabled={!input.trim()||sending}><SendSVG/></button>
       </div>
     </div>
   </div>);
@@ -467,23 +498,62 @@ function AuthModal({onAuth,onClose}){
 }
 
 /* ─ ADMIN ─ */
-function AdminPanel({onClose,products,setProducts,orders,setOrders}){
+function AdminPanel({onClose, refreshProducts}){
   const[tab,setTab]=useState('dash');
-  const[modal,setModal]=useState(null);
-  const blank={emoji:'🛍️',img:'',badge:'',cat:'',region:'',nom:'',prix:0,note:5.0,deliv:'3-5 jours'};
-  const[form,setForm_]=useState(blank);
-  const setF=(k,v)=>setForm_(f=>({...f,[k]:v}));
-  const msgs=ls.get('messages',DEF_MSGS);
-  const users=ls.get('users',DEF_USERS);
-  const totalCA=orders.reduce((s,o)=>s+o.montant,0);
+  const[products,setProducts]=useState([]);
+  const[orders,setOrders]=useState([]);
+  const[users,setUsers]=useState([]);
+  const[msgs,setMsgs]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  const loadAll=useCallback(async()=>{
+    setLoading(true);
+    const[p,o,u,m]=await Promise.all([
+      supabase.from('products').select('*,category:categories(nom,slug,emoji)').order('created_at',{ascending:false}),
+      supabase.from('orders').select('*').order('created_at',{ascending:false}),
+      supabase.from('profiles').select('*').order('created_at',{ascending:false}),
+      supabase.from('messages').select('*').order('created_at',{ascending:false}).limit(100),
+    ]);
+    setProducts(p.data||[]);
+    setOrders(o.data||[]);
+    setUsers(u.data||[]);
+    setMsgs(m.data||[]);
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{loadAll();},[loadAll]);
+
+  const totalCA=orders.reduce((s,o)=>s+Number(o.montant||0),0);
   const TABS=[{id:'dash',l:'Dashboard',i:'📊'},{id:'products',l:'Produits',i:'📦'},{id:'orders',l:'Commandes',i:'🚚'},{id:'users',l:'Membres',i:'👥'},{id:'messages',l:'Messages',i:'💬'}];
-  const saveProduct=()=>{
-    if(!form.nom||!form.cat)return;
-    const np=modal==='add'?[...products,{...form,id:Date.now(),prix:Number(form.prix),note:Number(form.note)}]:products.map(p=>p.id===modal?{...form,prix:Number(form.prix),note:Number(form.note)}:p);
-    setProducts(np);ls.set('products',np);setModal(null);
+
+  const delProduct=async(p)=>{
+    if(!window.confirm(`Supprimer "${p.nom}" ?`))return;
+    const{error}=await supabase.from('products').delete().eq('id',p.id);
+    if(error){window.alert(error.message);return;}
+    loadAll();refreshProducts?.();
   };
-  const delProduct=id=>{if(!confirm('Supprimer ?'))return;const np=products.filter(p=>p.id!==id);setProducts(np);ls.set('products',np);};
-  const delMsg=id=>{const nm=msgs.filter(m=>m.id!==id);ls.set('messages',nm);};
+  const toggleActive=async(p)=>{
+    const{error}=await supabase.from('products').update({active:!p.active}).eq('id',p.id);
+    if(error){window.alert(error.message);return;}
+    loadAll();refreshProducts?.();
+  };
+  const setOrderStatus=async(o,status)=>{
+    const{error}=await supabase.from('orders').update({status}).eq('id',o.id);
+    if(error){window.alert(error.message);return;}
+    setOrders(orders.map(x=>x.id===o.id?{...x,status}:x));
+  };
+  const setUserRole=async(u,role)=>{
+    const{error}=await supabase.from('profiles').update({role}).eq('id',u.id);
+    if(error){window.alert(error.message);return;}
+    setUsers(users.map(x=>x.id===u.id?{...x,role}:x));
+  };
+  const delMsg=async(m)=>{
+    if(!window.confirm('Supprimer ce message ?'))return;
+    const{error}=await supabase.from('messages').delete().eq('id',m.id);
+    if(error){window.alert(error.message);return;}
+    setMsgs(msgs.filter(x=>x.id!==m.id));
+  };
+  const getUser=id=>users.find(u=>u.id===id);
 
   return(<div className="admin-panel">
     <div className="admin-side">
@@ -494,53 +564,42 @@ function AdminPanel({onClose,products,setProducts,orders,setOrders}){
       <div className="admin-foot"><div className="admin-close" onClick={onClose}><span style={{fontSize:'16px'}}>←</span><span>Retour</span></div></div>
     </div>
     <div className="admin-main">
-      {tab==='dash'&&<div>
+      {loading&&<div style={{color:'var(--muted)',padding:'40px',textAlign:'center'}}>Chargement…</div>}
+
+      {!loading&&tab==='dash'&&<div>
         <div className="a-title">Dashboard</div>
         <div className="a-sub">Vue d'ensemble de SERAO</div>
         <div className="stat-grid">
-          {[{i:'💰',v:fmt(totalCA),l:'Chiffre d\'affaires',d:'↑ +12%'},{i:'📦',v:orders.length,l:'Commandes',d:'↑ +3 cette semaine'},{i:'🛍️',v:products.length,l:'Produits actifs',d:''},{i:'👥',v:users.length,l:'Membres',d:'↑ +2 ce mois'},{i:'💬',v:msgs.length,l:'Messages',d:''}].map((s,i)=>(
-            <div key={i} className="stat-card"><div className="stat-ico">{s.i}</div><div className="stat-val">{s.v}</div><div className="stat-lbl">{s.l}</div>{s.d&&<div className="stat-up">{s.d}</div>}</div>
+          {[{i:'💰',v:fmt(totalCA),l:'Chiffre d\'affaires'},{i:'📦',v:orders.length,l:'Commandes'},{i:'🛍️',v:products.filter(p=>p.active).length,l:'Produits actifs'},{i:'👥',v:users.length,l:'Membres'},{i:'💬',v:msgs.length,l:'Messages (récents)'}].map((s,i)=>(
+            <div key={i} className="stat-card"><div className="stat-ico">{s.i}</div><div className="stat-val">{s.v}</div><div className="stat-lbl">{s.l}</div></div>
           ))}
         </div>
-        <div className="atable-wrap"><table className="atable"><thead><tr><th>ID</th><th>Produit</th><th>Client</th><th>Montant</th><th>Statut</th><th>Date</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td><strong>{o.id}</strong></td><td>{o.produit}</td><td>{o.client}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(o.montant)}</td><td><span className={'s-pill '+(o.status==='livre'?'s-ok':o.status==='expedie'?'s-ok':'s-warn')}>{o.status}</span></td><td style={{color:'var(--muted)'}}>{o.date}</td></tr>)}</tbody></table></div>
+        <div className="atable-wrap"><table className="atable"><thead><tr><th>ID</th><th>Produit</th><th>Client</th><th>Montant</th><th>Statut</th><th>Date</th></tr></thead><tbody>{orders.slice(0,10).map(o=>{const buyer=getUser(o.acheteur_id);return(<tr key={o.id}><td><strong>{o.id}</strong></td><td>{o.product_nom}</td><td>{buyer?.nom||buyer?.email||'—'}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(o.montant)}</td><td><span className={'s-pill '+(o.status==='livre'?'s-ok':o.status==='expedie'||o.status==='transit'?'s-warn':o.status==='annule'?'s-err':'s-ok')}>{o.status}</span></td><td style={{color:'var(--muted)'}}>{o.created_at?.slice(0,10)}</td></tr>);})}</tbody></table></div>
       </div>}
 
-      {tab==='products'&&<div>
+      {!loading&&tab==='products'&&<div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px'}}>
-          <div><div className="a-title">Produits</div><div className="a-sub">{products.length} produits actifs</div></div>
-          <Btn onClick={()=>{setForm_(blank);setModal('add');}}>+ Ajouter</Btn>
+          <div><div className="a-title">Produits</div><div className="a-sub">{products.length} produits ({products.filter(p=>p.active).length} actifs)</div></div>
         </div>
-        <div className="atable-wrap"><table className="atable"><thead><tr><th></th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Badge</th><th>Actions</th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td style={{fontSize:'24px'}}>{p.emoji}</td><td style={{fontWeight:600}}>{p.nom}</td><td>{p.cat}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(p.prix)}</td><td>{p.badge?<Badge kind={p.badge}/>:'—'}</td><td><div style={{display:'flex',gap:'6px'}}><Btn sm v="glass" onClick={()=>{setForm_({...p});setModal(p.id);}}>✏️</Btn><Btn sm v="danger" onClick={()=>delProduct(p.id)}>🗑️</Btn></div></td></tr>)}</tbody></table></div>
-        {modal&&<div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setModal(null)}}><div className="modal">
-          <div className="modal-title">{modal==='add'?'Nouveau produit':'Modifier'}</div>
-          <div style={{display:'grid',gridTemplateColumns:'80px 1fr',gap:'12px'}}><div className="fg" style={{marginBottom:0}}><label className="fl">Emoji</label><input className="fi" value={form.emoji} onChange={e=>setF('emoji',e.target.value)}/></div><div className="fg" style={{marginBottom:0}}><label className="fl">Nom</label><input className="fi" value={form.nom} onChange={e=>setF('nom',e.target.value)}/></div></div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'12px'}}>
-            <div className="fg"><label className="fl">Catégorie</label><select className="fi" value={form.cat} onChange={e=>setF('cat',e.target.value)}><option value="">—</option>{['Vanille','Artisanat','Épices','Cosmétiques','Textiles','Bijoux'].map(c=><option key={c}>{c}</option>)}</select></div>
-            <div className="fg"><label className="fl">Région</label><input className="fi" value={form.region} onChange={e=>setF('region',e.target.value)}/></div>
-            <div className="fg"><label className="fl">Prix (Ar)</label><input className="fi" type="number" value={form.prix} onChange={e=>setF('prix',e.target.value)}/></div>
-            <div className="fg"><label className="fl">Badge</label><select className="fi" value={form.badge||''} onChange={e=>setF('badge',e.target.value||null)}><option value="">Aucun</option><option value="top">Top vendeur</option><option value="spons">Sponsorisé</option><option value="new">Nouveau</option></select></div>
-          </div>
-          <div className="fg"><label className="fl">URL Image</label><input className="fi" value={form.img||''} onChange={e=>setF('img',e.target.value)} placeholder="https://..."/></div>
-          <div className="modal-foot"><Btn v="glass" onClick={()=>setModal(null)}>Annuler</Btn><Btn onClick={saveProduct}>Enregistrer</Btn></div>
-        </div></div>}
+        <div className="atable-wrap"><table className="atable"><thead><tr><th></th><th>Nom</th><th>Catégorie</th><th>Vendeur</th><th>Prix</th><th>Actif</th><th>Actions</th></tr></thead><tbody>{products.map(p=>{const v=getUser(p.vendeur_id);return(<tr key={p.id}><td style={{fontSize:'24px'}}>{p.emoji}</td><td style={{fontWeight:600}}>{p.nom}</td><td>{p.category?.nom||'—'}</td><td style={{color:'var(--muted)'}}>{v?.nom||v?.email||'—'}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(p.prix)}</td><td><span className={'s-pill '+(p.active?'s-ok':'s-err')}>{p.active?'oui':'non'}</span></td><td><div style={{display:'flex',gap:'6px'}}><Btn sm v="glass" onClick={()=>toggleActive(p)}>{p.active?'❌':'✅'}</Btn><Btn sm v="danger" onClick={()=>delProduct(p)}>🗑️</Btn></div></td></tr>);})}</tbody></table></div>
       </div>}
 
-      {tab==='orders'&&<div>
+      {!loading&&tab==='orders'&&<div>
         <div className="a-title" style={{marginBottom:'4px'}}>Commandes</div>
         <div className="a-sub">{orders.length} commandes</div>
-        <div className="atable-wrap"><table className="atable"><thead><tr><th>ID</th><th>Produit</th><th>Client</th><th>Montant</th><th>Statut</th><th>Date</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td><strong>{o.id}</strong></td><td>{o.produit}</td><td>{o.client}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(o.montant)}</td><td><select className="fi" style={{height:'32px',padding:'0 10px',fontSize:'13px',width:'130px',borderRadius:'var(--r-pill)'}} value={o.status} onChange={e=>{const no=orders.map(x=>x.id===o.id?{...x,status:e.target.value}:x);setOrders(no);ls.set('orders',no);}}>{['confirme','preparation','expedie','transit','livre'].map(s=><option key={s}>{s}</option>)}</select></td><td style={{color:'var(--muted)'}}>{o.date}</td></tr>)}</tbody></table></div>
+        <div className="atable-wrap"><table className="atable"><thead><tr><th>ID</th><th>Produit</th><th>Client</th><th>Montant</th><th>Paiement</th><th>Statut</th><th>Date</th></tr></thead><tbody>{orders.map(o=>{const buyer=getUser(o.acheteur_id);return(<tr key={o.id}><td><strong>{o.id}</strong></td><td>{o.product_nom}</td><td>{buyer?.nom||buyer?.email||'—'}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(o.montant)}</td><td>{o.pay_method||'—'}</td><td><select className="fi" style={{height:'32px',padding:'0 10px',fontSize:'13px',width:'130px',borderRadius:'var(--r-pill)'}} value={o.status} onChange={e=>setOrderStatus(o,e.target.value)}>{['confirme','preparation','expedie','transit','livre','annule'].map(s=><option key={s}>{s}</option>)}</select></td><td style={{color:'var(--muted)'}}>{o.created_at?.slice(0,10)}</td></tr>);})}</tbody></table></div>
       </div>}
 
-      {tab==='users'&&<div>
+      {!loading&&tab==='users'&&<div>
         <div className="a-title" style={{marginBottom:'4px'}}>Membres</div>
         <div className="a-sub">{users.length} comptes</div>
-        <div className="atable-wrap"><table className="atable"><thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Inscription</th></tr></thead><tbody>{users.map(u=><tr key={u.id}><td><div style={{display:'flex',alignItems:'center',gap:'8px'}}><div style={{width:28,height:28,borderRadius:'50%',background:avColor(u.nom),display:'flex',alignItems:'center',justifyContent:'center',fontSize:'13px',fontWeight:700}}>{initials(u.nom)}</div><strong>{u.nom}</strong></div></td><td style={{color:'var(--emerald-glow)'}}>{u.email}</td><td><span className={'s-pill '+(u.role==='admin'?'s-warn':u.role==='vendeur'?'s-ok':'')}>{u.role}</span></td><td style={{color:'var(--muted)'}}>{u.createdAt}</td></tr>)}</tbody></table></div>
+        <div className="atable-wrap"><table className="atable"><thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Inscription</th></tr></thead><tbody>{users.map(u=><tr key={u.id}><td><div style={{display:'flex',alignItems:'center',gap:'8px'}}><div style={{width:28,height:28,borderRadius:'50%',background:avColor(u.nom||u.email||'?'),display:'flex',alignItems:'center',justifyContent:'center',fontSize:'13px',fontWeight:700}}>{initials(u.nom||u.email||'?')}</div><strong>{u.nom||'(sans nom)'}</strong></div></td><td style={{color:'var(--emerald-glow)'}}>{u.email}</td><td><select className="fi" style={{height:'30px',padding:'0 10px',fontSize:'13px',width:'120px',borderRadius:'var(--r-pill)'}} value={u.role} onChange={e=>setUserRole(u,e.target.value)}>{['acheteur','vendeur','admin'].map(r=><option key={r}>{r}</option>)}</select></td><td style={{color:'var(--muted)'}}>{u.created_at?.slice(0,10)}</td></tr>)}</tbody></table></div>
       </div>}
 
-      {tab==='messages'&&<div>
+      {!loading&&tab==='messages'&&<div>
         <div className="a-title" style={{marginBottom:'4px'}}>Messages</div>
-        <div className="a-sub">{msgs.length} messages</div>
-        <div className="atable-wrap"><table className="atable"><thead><tr><th>De</th><th>Vers</th><th>Message</th><th>Heure</th><th>Action</th></tr></thead><tbody>{[...msgs].reverse().slice(0,20).map(m=>{const sender=users.find(u=>u.id===m.from);const isC=m.to.startsWith('channel:');const target=isC?PUB_CHANNELS.find(c=>`channel:${c.id}`===m.to):users.find(u=>u.id===m.to);return(<tr key={m.id}><td>{sender?.nom||'?'}</td><td style={{color:'var(--emerald-glow)'}}>{isC?target?.name||m.to:target?.nom||m.to}</td><td style={{maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.content}</td><td style={{color:'var(--muted)'}}>{fmtT(m.ts)}</td><td><Btn sm v="danger" onClick={()=>delMsg(m.id)}>🗑️</Btn></td></tr>);})}</tbody></table></div>
+        <div className="a-sub">{msgs.length} messages récents</div>
+        <div className="atable-wrap"><table className="atable"><thead><tr><th>De</th><th>Vers</th><th>Message</th><th>Heure</th><th>Action</th></tr></thead><tbody>{msgs.slice(0,30).map(m=>{const sender=getUser(m.from_user);const target=m.channel?{nom:'# '+m.channel}:getUser(m.to_user);return(<tr key={m.id}><td>{sender?.nom||sender?.email||'?'}</td><td style={{color:'var(--emerald-glow)'}}>{target?.nom||target?.email||'?'}</td><td style={{maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.content}</td><td style={{color:'var(--muted)'}}>{fmtT(m.created_at)}</td><td><Btn sm v="danger" onClick={()=>delMsg(m)}>🗑️</Btn></td></tr>);})}</tbody></table></div>
       </div>}
     </div>
   </div>);
@@ -720,21 +779,211 @@ function PageAPropos({nav}){
   </div>);
 }
 
-function PageVendeur({showToast}){
+/* ─ VENDOR DASHBOARD — list & manage own products ─ */
+function VendeurDashboard({user, showToast, refreshAll}){
+  const blank={nom:'',description:'',category_id:'',region:'',prix:'',emoji:'🛍️',image_url:'',badge:'',deliv:'3-5 jours',stock:1};
+  const[products,setProducts]=useState([]);
+  const[categories,setCategories]=useState([]);
+  const[editing,setEditing]=useState(null); // null | 'new' | productId
+  const[form,setForm]=useState(blank);
+  const[photoFile,setPhotoFile]=useState(null);
+  const[busy,setBusy]=useState(false);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const load=useCallback(async()=>{
+    const[p,c]=await Promise.all([
+      supabase.from('products').select('*,category:categories(nom,slug,emoji)').eq('vendeur_id',user.id).order('created_at',{ascending:false}),
+      supabase.from('categories').select('*').order('display_order'),
+    ]);
+    setProducts(p.data||[]);setCategories(c.data||[]);
+  },[user.id]);
+
+  useEffect(()=>{load();},[load]);
+
+  const openNew=()=>{setForm(blank);setPhotoFile(null);setEditing('new');};
+  const openEdit=(p)=>{setForm({nom:p.nom||'',description:p.description||'',category_id:p.category_id||'',region:p.region||'',prix:p.prix||'',emoji:p.emoji||'🛍️',image_url:p.image_url||'',badge:p.badge||'',deliv:p.deliv||'3-5 jours',stock:p.stock||1});setPhotoFile(null);setEditing(p.id);};
+  const cancel=()=>{setEditing(null);setForm(blank);setPhotoFile(null);};
+
+  const submit=async()=>{
+    if(!form.nom||!form.prix){showToast('Nom et prix requis','err');return;}
+    setBusy(true);
+    try{
+      let image_url=form.image_url;
+      if(photoFile){
+        const ext=photoFile.name.split('.').pop().toLowerCase();
+        const path=`${user.id}/${Date.now()}.${ext}`;
+        const{error:upErr}=await supabase.storage.from('product-photos').upload(path,photoFile,{contentType:photoFile.type,upsert:false});
+        if(upErr){showToast('Upload échoué: '+upErr.message,'err');return;}
+        const{data:pub}=supabase.storage.from('product-photos').getPublicUrl(path);
+        image_url=pub.publicUrl;
+      }
+      const payload={
+        vendeur_id:user.id,
+        nom:form.nom,
+        description:form.description||null,
+        category_id:form.category_id?Number(form.category_id):null,
+        region:form.region||null,
+        prix:Number(form.prix),
+        emoji:form.emoji||'🛍️',
+        image_url:image_url||null,
+        badge:form.badge||null,
+        deliv:form.deliv,
+        stock:Number(form.stock)||1,
+        active:true,
+      };
+      const res=editing==='new'
+        ? await supabase.from('products').insert(payload).select().single()
+        : await supabase.from('products').update(payload).eq('id',editing).select().single();
+      if(res.error){showToast(res.error.message,'err');return;}
+      showToast(editing==='new'?'Produit publié ✓':'Produit mis à jour ✓');
+      cancel();
+      load();refreshAll?.();
+    }catch(ex){showToast(ex.message||'Erreur','err');}
+    finally{setBusy(false);}
+  };
+
+  const del=async(p)=>{
+    if(!window.confirm(`Supprimer "${p.nom}" ?`))return;
+    const{error}=await supabase.from('products').delete().eq('id',p.id);
+    if(error){showToast(error.message,'err');return;}
+    showToast('Produit supprimé');
+    load();refreshAll?.();
+  };
+
   return(<div>
-    <div className="page-hero"><div className="wrap"><h1>Rejoindre SERAO</h1><p>Inscription ultra-sécurisée · Vérification d'identité · Badge vendeur vérifié</p></div></div>
-    <section className="section"><div className="wrap">
-      <div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:'40px',alignItems:'start'}}>
-        <div>
-          <h3 style={{fontFamily:'var(--font-display)',fontSize:'20px',fontWeight:700,marginBottom:'20px',background:'linear-gradient(135deg,var(--white),var(--glacier))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Avantages inclus</h3>
-          <ul className="avantages">
-            {['Accès à des milliers de clients','Estimation IA de vos produits','Diffusion live multiplateforme','Dashboard vendeur complet','Paiement Mobile Money automatique','Support dédié 7j/7','Badge vendeur vérifié','Commission uniquement sur ventes'].map((a,i)=>(
-              <li key={i}><div className="av-check">✓</div>{a}</li>
-            ))}
-          </ul>
-        </div>
-        <KYCFlow showToast={showToast}/>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px',flexWrap:'wrap',gap:'16px'}}>
+      <div>
+        <h2 className="sec-h" style={{marginBottom:'4px'}}>Ma boutique</h2>
+        <div style={{color:'var(--muted)',fontSize:'14px'}}>{products.length} produit{products.length>1?'s':''} actif{products.length>1?'s':''}</div>
       </div>
+      <Btn onClick={openNew}>+ Nouveau produit</Btn>
+    </div>
+
+    {products.length===0&&!editing&&(
+      <div className="glass" style={{padding:'48px',textAlign:'center'}}>
+        <div style={{fontSize:'48px',marginBottom:'12px'}}>📦</div>
+        <div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucun produit pour l'instant</div>
+        <div style={{color:'var(--muted)',marginBottom:'20px'}}>Ajoute ton premier produit pour qu'il apparaisse dans le catalogue.</div>
+        <Btn onClick={openNew}>+ Ajouter mon premier produit</Btn>
+      </div>
+    )}
+
+    {products.length>0&&(
+      <div className="pgrid">
+        {products.map(p=>(
+          <article key={p.id} className="pcard">
+            <div className="pcard-img">
+              {p.image_url?<img src={p.image_url} alt={p.nom} className="pcard-photo" loading="lazy"/>:<div className="pcard-emo">{p.emoji}</div>}
+              {p.badge&&<div className="pcard-badge-pos"><Badge kind={p.badge}/></div>}
+            </div>
+            <div className="pcard-body">
+              <div className="pcard-meta">{p.category?.nom||'—'} · {p.region||'—'}</div>
+              <div className="pcard-name">{p.nom}</div>
+              <div className="pcard-foot">
+                <span className="pcard-price">{fmt(p.prix)}</span>
+                <div style={{display:'flex',gap:'6px'}}>
+                  <Btn sm v="glass" onClick={()=>openEdit(p)}>✏️</Btn>
+                  <Btn sm v="danger" onClick={()=>del(p)}>🗑️</Btn>
+                </div>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    )}
+
+    {editing&&(
+      <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)cancel();}}>
+        <div className="modal" style={{maxWidth:'620px'}}>
+          <div className="modal-title">{editing==='new'?'Nouveau produit':'Modifier le produit'}</div>
+
+          <div className="fg"><label className="fl">Photo du produit</label>
+            <input type="file" accept="image/*" onChange={e=>setPhotoFile(e.target.files?.[0]||null)} className="fi" style={{padding:'10px',height:'auto'}}/>
+            {(photoFile||form.image_url)&&(
+              <div style={{marginTop:'10px',display:'flex',alignItems:'center',gap:'10px'}}>
+                <img src={photoFile?URL.createObjectURL(photoFile):form.image_url} alt="aperçu" style={{width:80,height:80,objectFit:'cover',borderRadius:'var(--r-md)'}}/>
+                <div style={{fontSize:'13px',color:'var(--muted)'}}>{photoFile?'Nouvelle image':'Image actuelle'}</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'80px 1fr',gap:'12px'}}>
+            <div className="fg" style={{marginBottom:0}}><label className="fl">Emoji</label><input className="fi" value={form.emoji} onChange={e=>set('emoji',e.target.value)} maxLength={4}/></div>
+            <div className="fg" style={{marginBottom:0}}><label className="fl">Nom *</label><input className="fi" value={form.nom} onChange={e=>set('nom',e.target.value)} placeholder="Vanille Bourbon Premium" autoFocus/></div>
+          </div>
+
+          <div className="fg" style={{marginTop:'12px'}}><label className="fl">Description</label><textarea className="fi" rows="3" value={form.description} onChange={e=>set('description',e.target.value)} placeholder="Origine, mode de production, ce qui le rend unique..."/></div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+            <div className="fg"><label className="fl">Catégorie</label>
+              <select className="fi" value={form.category_id} onChange={e=>set('category_id',e.target.value)}>
+                <option value="">—</option>
+                {categories.map(c=><option key={c.id} value={c.id}>{c.emoji} {c.nom}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label className="fl">Région</label><input className="fi" value={form.region} onChange={e=>set('region',e.target.value)} placeholder="SAVA, Toamasina..."/></div>
+            <div className="fg"><label className="fl">Prix (Ar) *</label><input className="fi" type="number" min="0" value={form.prix} onChange={e=>set('prix',e.target.value)}/></div>
+            <div className="fg"><label className="fl">Stock</label><input className="fi" type="number" min="0" value={form.stock} onChange={e=>set('stock',e.target.value)}/></div>
+            <div className="fg"><label className="fl">Délai livraison</label><input className="fi" value={form.deliv} onChange={e=>set('deliv',e.target.value)} placeholder="3-5 jours"/></div>
+            <div className="fg"><label className="fl">Badge</label>
+              <select className="fi" value={form.badge} onChange={e=>set('badge',e.target.value)}>
+                <option value="">Aucun</option><option value="top">Top vendeur</option><option value="spons">Sponsorisé</option><option value="new">Nouveau</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="modal-foot">
+            <Btn v="glass" onClick={cancel} disabled={busy}>Annuler</Btn>
+            <Btn onClick={submit} disabled={busy}>{busy?'…':(editing==='new'?'Publier':'Enregistrer')}</Btn>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>);
+}
+
+function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
+  const becomeVendor=async()=>{
+    if(!user){setShowAuth(true);return;}
+    const{error}=await supabase.from('profiles').update({role:'vendeur'}).eq('id',user.id);
+    if(error){showToast(error.message,'err');return;}
+    showToast('Tu es maintenant vendeur 🎉');
+    refreshUser?.();
+  };
+
+  return(<div>
+    <div className="page-hero"><div className="wrap">
+      <h1>{user?.role==='vendeur'?'Espace vendeur':'Devenir vendeur'}</h1>
+      <p>{user?.role==='vendeur'?'Gère ton catalogue, suis tes ventes, dialogue avec tes clients.':'Inscription rapide · Aucun frais fixe · Commission uniquement sur ventes (3%)'}</p>
+    </div></div>
+    <section className="section"><div className="wrap">
+      {user?.role==='vendeur'?(
+        <VendeurDashboard user={user} showToast={showToast} refreshAll={refreshProducts}/>
+      ):(
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'40px',alignItems:'start'}}>
+          <div>
+            <h3 style={{fontFamily:'var(--font-display)',fontSize:'20px',fontWeight:700,marginBottom:'20px',background:'linear-gradient(135deg,var(--white),var(--glacier))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Avantages inclus</h3>
+            <ul className="avantages">
+              {['Accès à des milliers de clients','Tableau de bord vendeur complet','Photos produits illimitées','Paiement Mobile Money intégré','Support dédié 7j/7','Badge vendeur vérifié','Commission uniquement sur ventes'].map((a,i)=>(
+                <li key={i}><div className="av-check">✓</div>{a}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="glass" style={{padding:'32px',textAlign:'center'}}>
+            <div style={{fontSize:'56px',marginBottom:'16px'}}>🏪</div>
+            <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'8px'}}>Prêt à vendre sur SERAO ?</div>
+            <div style={{color:'var(--muted)',fontSize:'15px',marginBottom:'24px',lineHeight:1.6}}>
+              {user?'Active ton statut vendeur en un clic et commence à publier tes produits.':'Crée un compte (ou connecte-toi) puis active ton statut vendeur.'}
+            </div>
+            <Btn onClick={becomeVendor} style={{width:'100%'}}>
+              {user?'Activer mon statut vendeur →':'Se connecter pour commencer →'}
+            </Btn>
+            <div style={{marginTop:'20px',padding:'12px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'12px',color:'var(--muted)'}}>
+              💰 Inscription gratuite · 3% de commission sur les ventes réalisées
+            </div>
+          </div>
+        </div>
+      )}
     </div></section>
   </div>);
 }
@@ -771,7 +1020,6 @@ function App(){
   const[showAuth,setShowAuth]=useState(false);
   const[showChat,setShowChat]=useState(false);
   const[adminOpen,setAdminOpen]=useState(false);
-  const[adminAuth,setAdminAuth]=useState(false);
   const[userMenu,setUserMenu]=useState(false);
   const[payProduct,setPayProduct]=useState(null);
   const[logoClicks,setLogoClicks]=useState(0);
@@ -811,19 +1059,22 @@ function App(){
   },[]);
 
   // Load products from Supabase (anyone can read active products via RLS)
-  useEffect(()=>{
-    let mounted=true;
-    (async()=>{
-      const{data,error}=await supabase
-        .from('products')
-        .select('*,category:categories(nom,slug,emoji)')
-        .eq('active',true)
-        .order('created_at',{ascending:false});
-      if(!mounted)return;
-      if(error){console.warn('products load error',error);return;}
-      setProducts((data||[]).map(mapProductRow));
-    })();
-    return()=>{mounted=false;};
+  const refreshProducts=useCallback(async()=>{
+    const{data,error}=await supabase
+      .from('products')
+      .select('*,category:categories(nom,slug,emoji)')
+      .eq('active',true)
+      .order('created_at',{ascending:false});
+    if(error){console.warn('products load error',error);return;}
+    setProducts((data||[]).map(mapProductRow));
+  },[]);
+  useEffect(()=>{refreshProducts();},[refreshProducts]);
+
+  const refreshUser=useCallback(async()=>{
+    const{data:{user:au}}=await supabase.auth.getUser();
+    if(!au){setUser(null);return;}
+    const u=await fetchProfile(au);
+    setUser(u);
   },[]);
 
   // Load orders when user logs in (RLS only returns own orders)
@@ -861,9 +1112,11 @@ function App(){
   const unread=user?msgs.filter(m=>(m.to===user.id||(m.to&&m.to.startsWith('channel:')))&&!(m.read||[]).includes(user.id)).length:0;
   const LINKS=[{id:'accueil',l:'Accueil'},{id:'catalogue',l:'Catalogue'},{id:'blog',l:'Blog'},{id:'livraison',l:'Livraison'},{id:'live',l:'Live'},{id:'apropos',l:'À propos'}];
 
-  if(adminOpen&&adminAuth){
+  const isAdmin=user?.role==='admin';
+
+  if(adminOpen&&isAdmin){
     return(<>
-      <AdminPanel onClose={()=>{setAdminOpen(false);setAdminAuth(false);}} products={products} setProducts={setProducts} orders={orders} setOrders={setOrders}/>
+      <AdminPanel onClose={()=>setAdminOpen(false)} refreshProducts={refreshProducts}/>
       {toast&&<div className="toast"><span className={toastType==='ok'?'t-ok':'t-err'}>{toastType==='ok'?'✓':'✗'}</span>{toast}</div>}
     </>);
   }
@@ -871,14 +1124,16 @@ function App(){
   return(<div className="app-root">
     {showAuth&&<AuthModal onAuth={login} onClose={()=>setShowAuth(false)}/>}
     {payProduct&&<PaymentModal product={payProduct} user={user} onClose={()=>{setPayProduct(null);setCart(c=>c+1);}} showToast={showToast}/>}
-    {adminOpen&&!adminAuth&&(
+    {adminOpen&&!isAdmin&&(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setAdminOpen(false)}}>
         <div className="modal">
           <div className="modal-title">🔐 Accès Admin SERAO</div>
-          <form onSubmit={e=>{e.preventDefault();if(e.target.pw.value==='serao2026')setAdminAuth(true);else alert('Mot de passe incorrect');}}>
-            <div className="fg"><input name="pw" className="fi" type="password" placeholder="Mot de passe admin" autoFocus/></div>
-            <Btn type="submit" style={{width:'100%'}}>Connexion Admin</Btn>
-          </form>
+          <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'16px'}}>
+            Cette zone est réservée aux comptes avec le rôle <strong style={{color:'var(--text)'}}>admin</strong>.
+            {!user&&' Connecte-toi avec un compte admin.'}
+            {user&&user.role!=='admin'&&` Tu es actuellement connecté en tant que ${user.role}.`}
+          </p>
+          <Btn v="glass" onClick={()=>setAdminOpen(false)} style={{width:'100%'}}>Fermer</Btn>
         </div>
       </div>
     )}
@@ -933,7 +1188,7 @@ function App(){
     {page==='livraison' &&<PageLivraison/>}
     {page==='live'      &&<PageLive/>}
     {page==='apropos'   &&<PageAPropos nav={nav}/>}
-    {page==='vendeur'   &&<PageVendeur showToast={showToast}/>}
+    {page==='vendeur'   &&<PageVendeur user={user} showToast={showToast} setShowAuth={setShowAuth} refreshUser={refreshUser} refreshProducts={refreshProducts}/>}
 
     <Footer nav={nav}/>
 
