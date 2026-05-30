@@ -322,16 +322,46 @@ function ChatWindow({user,onClose}){
     return()=>{mounted=false;};
   },[]);
 
-  // Realtime subscription on messages table
+  // Realtime subscription on messages table (INSERT + DELETE + UPDATE)
   useEffect(()=>{
     const ch=supabase
       .channel('serao-messages')
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},payload=>{
         setMsgs(prev=>prev.some(m=>m.id===payload.new.id)?prev:[...prev,payload.new]);
       })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'messages'},payload=>{
+        setMsgs(prev=>prev.filter(m=>m.id!==payload.old.id));
+      })
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages'},payload=>{
+        setMsgs(prev=>prev.map(m=>m.id===payload.new.id?payload.new:m));
+      })
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
+
+  // Fallback poll every 5s in case Realtime is silently dropped (extension blocking WebSocket, etc.)
+  useEffect(()=>{
+    const id=setInterval(async()=>{
+      const{data}=await supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(500);
+      if(data)setMsgs(data);
+    },5000);
+    return()=>clearInterval(id);
+  },[]);
+
+  // Message actions
+  const[menuFor,setMenuFor]=useState(null); // message id whose menu is open
+  const deleteMessage=async(m)=>{
+    setMenuFor(null);
+    if(!window.confirm('Supprimer ce message ?'))return;
+    const{error}=await supabase.from('messages').delete().eq('id',m.id);
+    if(error){console.warn(error);return;}
+    // Optimistic remove (realtime will also remove it but this is instant)
+    setMsgs(prev=>prev.filter(x=>x.id!==m.id));
+  };
+  const copyMessage=async(m)=>{
+    setMenuFor(null);
+    try{await navigator.clipboard.writeText(m.content);}catch{}
+  };
 
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[msgs,active]);
 
@@ -409,11 +439,34 @@ function ChatWindow({user,onClose}){
         {grouped.map((item,i)=>{
           if(item.type==='sep')return<div key={i} className="chat-date-sep"><span>{item.day}</span></div>;
           const sender=getUser(item._from);const mine=item._from===user.id;
-          return(<div key={item.id} className={'msg-row'+(mine?' mine':'')}>
+          const menuOpen=menuFor===item.id;
+          return(<div key={item.id} className={'msg-row msg-hover-host'+(mine?' mine':'')} style={{position:'relative'}}>
             {!mine&&<div className="msg-av" style={{background:avColor(sender.nom||'?')}}>{initials(sender.nom||'?')}</div>}
-            <div className="msg-bubbles">
+            <div className="msg-bubbles" style={{position:'relative'}}>
               {!mine&&active.type==='channel'&&<div className="msg-sender">{sender.nom||sender.email||'Anon'}</div>}
-              <div className={'bubble '+(mine?'bubble-mine':'bubble-them')}>{item.content}</div>
+              <div style={{display:'flex',alignItems:'center',gap:'6px',flexDirection:mine?'row-reverse':'row'}}>
+                <div className={'bubble '+(mine?'bubble-mine':'bubble-them')}>{item.content}</div>
+                <button
+                  className="msg-menu-btn"
+                  onClick={()=>setMenuFor(menuOpen?null:item.id)}
+                  aria-label="Options du message"
+                  style={{border:'none',background:'transparent',color:'var(--muted)',cursor:'pointer',padding:'4px 6px',borderRadius:'50%',opacity:menuOpen?1:0.6,fontSize:'18px',lineHeight:1}}
+                >⋯</button>
+              </div>
+              {menuOpen&&(
+                <div
+                  onMouseLeave={()=>setMenuFor(null)}
+                  style={{position:'absolute',top:'100%',[mine?'right':'left']:0,marginTop:'6px',background:'rgba(10,18,28,0.98)',border:'1px solid var(--glass-border-hi)',borderRadius:'var(--r-md)',minWidth:'150px',zIndex:50,boxShadow:'var(--shadow-float)',overflow:'hidden',backdropFilter:'blur(20px)'}}
+                >
+                  <div onClick={()=>copyMessage(item)} style={{padding:'10px 14px',fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',color:'var(--text)'}}>📋 Copier le texte</div>
+                  {(mine||user?.role==='admin')&&(
+                    <>
+                      <div style={{height:'1px',background:'var(--glass-border)'}}/>
+                      <div onClick={()=>deleteMessage(item)} style={{padding:'10px 14px',fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',color:'#fca5a5'}}>🗑️ Supprimer</div>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="msg-time">{fmtT(item._ts)}{mine&&' ✓✓'}</div>
             </div>
           </div>);
@@ -481,7 +534,14 @@ function AuthModal({onAuth,onClose}){
         );
         onAuth({...data.user,...(profile||{})});
       }
-    }catch(ex){setErr(ex.message||'Erreur inconnue');}
+    }catch(ex){
+      const msg=ex?.message||'Erreur inconnue';
+      if(/délai dépassé|timed? out|Failed to fetch|NetworkError|ERR_BLOCKED/i.test(msg)){
+        setErr('Connexion impossible. Vérifie ta connexion Internet ET désactive tes extensions Chrome (AdBlock, Brave Shields, etc.) qui peuvent bloquer Supabase. Astuce : essaie en navigation privée pour confirmer.');
+      } else {
+        setErr(msg);
+      }
+    }
     finally{setBusy(false);}
   };
 
@@ -984,14 +1044,30 @@ function VendeurDashboard({user, showToast, refreshAll}){
         <div className="modal" style={{maxWidth:'620px'}}>
           <div className="modal-title">{editing==='new'?'Nouveau produit':'Modifier le produit'}</div>
 
-          <div className="fg"><label className="fl">Photo du produit</label>
-            <input type="file" accept="image/*" onChange={e=>setPhotoFile(e.target.files?.[0]||null)} className="fi" style={{padding:'10px',height:'auto'}}/>
+          <div className="fg"><label className="fl">Photo du produit <span style={{color:'var(--muted)',fontWeight:400}}>(facultatif, max 5 Mo)</span></label>
+            {!photoFile&&!form.image_url&&(
+              <label htmlFor="prod-photo" style={{display:'block',padding:'24px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',textAlign:'center',cursor:'pointer',background:'var(--glass-1)',transition:'all .2s'}}>
+                <div style={{fontSize:'32px',marginBottom:'6px'}}>📷</div>
+                <div style={{fontSize:'14px',color:'var(--text)',fontWeight:500}}>Cliquer pour ajouter une photo</div>
+                <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'4px'}}>JPG, PNG, WEBP — 5 Mo max</div>
+              </label>
+            )}
             {(photoFile||form.image_url)&&(
-              <div style={{marginTop:'10px',display:'flex',alignItems:'center',gap:'10px'}}>
-                <img src={photoFile?URL.createObjectURL(photoFile):form.image_url} alt="aperçu" style={{width:80,height:80,objectFit:'cover',borderRadius:'var(--r-md)'}}/>
-                <div style={{fontSize:'13px',color:'var(--muted)'}}>{photoFile?'Nouvelle image':'Image actuelle'}</div>
+              <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)'}}>
+                <img src={photoFile?URL.createObjectURL(photoFile):form.image_url} alt="aperçu" style={{width:80,height:80,objectFit:'cover',borderRadius:'var(--r-sm)',flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'14px',color:'var(--text)',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {photoFile?photoFile.name:'Image déjà publiée'}
+                  </div>
+                  <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'2px'}}>
+                    {photoFile?`${(photoFile.size/1024).toFixed(0)} Ko · ${photoFile.type||'image'}`:'Sélectionne une nouvelle image pour la remplacer'}
+                  </div>
+                </div>
+                <label htmlFor="prod-photo" className="btn btn-glass btn-sm" style={{cursor:'pointer'}}>Changer</label>
+                <button type="button" onClick={()=>{setPhotoFile(null);set('image_url','');}} className="btn btn-danger btn-sm" style={{minWidth:'auto',padding:'0 10px'}}>✕</button>
               </div>
             )}
+            <input id="prod-photo" type="file" accept="image/jpeg,image/jpg,image/png,image/webp,image/gif" onChange={e=>{const f=e.target.files?.[0]||null;if(f&&f.size>5*1024*1024){showToast("Photo trop lourde (max 5 Mo). Compresse-la d'abord.","err");e.target.value='';return;}setPhotoFile(f);}} style={{display:'none'}}/>
           </div>
 
           <div style={{display:'grid',gridTemplateColumns:'80px 1fr',gap:'12px'}}>
@@ -1019,6 +1095,12 @@ function VendeurDashboard({user, showToast, refreshAll}){
             </div>
           </div>
 
+          {busy&&(
+            <div style={{padding:'12px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'13px',color:'var(--cyan-light)',marginBottom:'12px',display:'flex',alignItems:'center',gap:'10px'}}>
+              <div className="pay-spinner" style={{width:20,height:20,borderWidth:2,margin:0}}/>
+              {photoFile?'Upload de la photo...':'Enregistrement...'}
+            </div>
+          )}
           <div className="modal-foot">
             <Btn v="glass" onClick={cancel} disabled={busy}>Annuler</Btn>
             <Btn onClick={submit} disabled={busy}>{busy?'…':(editing==='new'?'Publier':'Enregistrer')}</Btn>
