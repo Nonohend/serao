@@ -951,13 +951,15 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
     refreshUser?.();
   };
 
+  const canSell = user?.role==='vendeur' || user?.role==='admin';
+
   return(<div>
     <div className="page-hero"><div className="wrap">
-      <h1>{user?.role==='vendeur'?'Espace vendeur':'Devenir vendeur'}</h1>
-      <p>{user?.role==='vendeur'?'Gère ton catalogue, suis tes ventes, dialogue avec tes clients.':'Inscription rapide · Aucun frais fixe · Commission uniquement sur ventes (3%)'}</p>
+      <h1>{canSell?'Espace vendeur':'Devenir vendeur'}</h1>
+      <p>{canSell?'Gère ton catalogue, suis tes ventes, dialogue avec tes clients.':'Inscription rapide · Aucun frais fixe · Commission uniquement sur ventes (3%)'}</p>
     </div></div>
     <section className="section"><div className="wrap">
-      {user?.role==='vendeur'?(
+      {canSell?(
         <VendeurDashboard user={user} showToast={showToast} refreshAll={refreshProducts}/>
       ):(
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'40px',alignItems:'start'}}>
