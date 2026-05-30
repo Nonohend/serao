@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
-import { supabase } from './lib/supabase';
+import { supabase, SITE_URL } from './lib/supabase';
 
 /* ─ STORAGE (legacy — being migrated to Supabase) ─ */
 const ls={
@@ -434,17 +434,22 @@ function AuthModal({onAuth,onClose}){
   const[role,setRole]=useState('acheteur');
   const[f,setF]=useState({nom:'',email:'',password:''});
   const[err,setErr]=useState('');
+  const[info,setInfo]=useState('');
   const[busy,setBusy]=useState(false);
-  const set=(k,v)=>setF(ff=>({...ff,[k]:v}));
+  const set=(k,v)=>{setF(ff=>({...ff,[k]:v}));setErr('');setInfo('');};
   const submit=async e=>{
-    e.preventDefault();setErr('');
+    e.preventDefault();setErr('');setInfo('');
     if(!f.email||!f.password){setErr('Email et mot de passe requis.');return;}
     setBusy(true);
     try{
       if(tab==='login'){
         const {data,error}=await supabase.auth.signInWithPassword({email:f.email,password:f.password});
-        if(error){setErr(error.message==='Invalid login credentials'?'Email ou mot de passe incorrect.':error.message);return;}
-        // Fetch profile row (created by trigger on signup)
+        if(error){
+          if(error.message==='Invalid login credentials')setErr('Email ou mot de passe incorrect.');
+          else if(error.message?.includes('Email not confirmed'))setErr('Email non confirmé. Clique sur "Mot de passe oublié ?" pour recevoir un nouveau lien.');
+          else setErr(error.message);
+          return;
+        }
         const {data:profile}=await supabase.from('profiles').select('*').eq('id',data.user.id).single();
         onAuth({...data.user,...profile});
       }else{
@@ -453,14 +458,29 @@ function AuthModal({onAuth,onClose}){
         const {data,error}=await supabase.auth.signUp({
           email:f.email,
           password:f.password,
-          options:{data:{nom:f.nom,role}}
+          options:{
+            data:{nom:f.nom,role},
+            emailRedirectTo: SITE_URL,
+          }
         });
         if(error){setErr(error.message);return;}
-        if(!data.session){setErr('Vérifie ton email pour confirmer ton inscription.');return;}
+        if(!data.session){setInfo('Compte créé ! Vérifie ta boîte mail pour confirmer ton email (le lien te renvoie sur le site).');return;}
         const {data:profile}=await supabase.from('profiles').select('*').eq('id',data.user.id).single();
         onAuth({...data.user,...profile});
       }
     }catch(ex){setErr(ex.message||'Erreur inconnue');}
+    finally{setBusy(false);}
+  };
+
+  const forgotPassword=async()=>{
+    setErr('');setInfo('');
+    if(!f.email){setErr('Entre ton email d\'abord.');return;}
+    setBusy(true);
+    try{
+      const{error}=await supabase.auth.resetPasswordForEmail(f.email,{redirectTo:SITE_URL+'?reset=1'});
+      if(error){setErr(error.message);return;}
+      setInfo('Email de réinitialisation envoyé. Vérifie ta boîte (et tes spams).');
+    }catch(ex){setErr(ex.message||'Erreur');}
     finally{setBusy(false);}
   };
   return(<div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
@@ -491,7 +511,49 @@ function AuthModal({onAuth,onClose}){
         <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={f.email} onChange={e=>set('email',e.target.value)} placeholder="votre@email.com" autoFocus={tab==='login'}/></div>
         <div className="fg"><label className="fl">Mot de passe</label><input className="fi" type="password" value={f.password} onChange={e=>set('password',e.target.value)} placeholder={tab==='login'?'Votre mot de passe':'Choisir un mot de passe'}/></div>
         {err&&<p style={{color:'#fca5a5',fontSize:'13px',marginBottom:'12px'}}>{err}</p>}
+        {info&&<p style={{color:'var(--emerald-glow)',fontSize:'13px',marginBottom:'12px'}}>{info}</p>}
         <Btn type="submit" style={{width:'100%'}} disabled={busy}>{busy?'…':(tab==='login'?'Se connecter →':'Créer mon compte →')}</Btn>
+      </form>
+      {tab==='login'&&(
+        <div style={{marginTop:'14px',textAlign:'center'}}>
+          <button type="button" onClick={forgotPassword} disabled={busy} style={{background:'none',border:'none',color:'var(--cyan-light)',fontSize:'13px',cursor:'pointer',textDecoration:'underline'}}>Mot de passe oublié ?</button>
+        </div>
+      )}
+    </div>
+  </div>);
+}
+
+/* ─ RESET PASSWORD MODAL — shown when user lands from a recovery link ─ */
+function ResetPasswordModal({onClose, showToast}){
+  const[pw,setPw]=useState('');
+  const[pw2,setPw2]=useState('');
+  const[busy,setBusy]=useState(false);
+  const[err,setErr]=useState('');
+  const submit=async e=>{
+    e.preventDefault();setErr('');
+    if(pw.length<6){setErr('Minimum 6 caractères.');return;}
+    if(pw!==pw2){setErr('Les deux mots de passe ne correspondent pas.');return;}
+    setBusy(true);
+    const{error}=await supabase.auth.updateUser({password:pw});
+    setBusy(false);
+    if(error){setErr(error.message);return;}
+    showToast('Mot de passe mis à jour ✓');
+    onClose();
+  };
+  return(<div className="modal-bg">
+    <div className="modal">
+      <div className="modal-title">🔑 Définir un nouveau mot de passe</div>
+      <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'18px'}}>
+        Tu viens de cliquer sur un lien de réinitialisation. Choisis un nouveau mot de passe.
+      </p>
+      <form onSubmit={submit}>
+        <div className="fg"><label className="fl">Nouveau mot de passe</label><input className="fi" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="6 caractères minimum" autoFocus/></div>
+        <div className="fg"><label className="fl">Confirmer</label><input className="fi" type="password" value={pw2} onChange={e=>setPw2(e.target.value)}/></div>
+        {err&&<p style={{color:'#fca5a5',fontSize:'13px',marginBottom:'12px'}}>{err}</p>}
+        <div className="modal-foot">
+          <Btn v="glass" type="button" onClick={onClose} disabled={busy}>Annuler</Btn>
+          <Btn type="submit" disabled={busy}>{busy?'…':'Enregistrer'}</Btn>
+        </div>
       </form>
     </div>
   </div>);
@@ -1042,6 +1104,12 @@ function App(){
     return data?{...authUser,...data}:authUser;
   };
 
+  // Password reset flow: when the user lands with ?reset=1 (after clicking the reset email link)
+  const[resetMode,setResetMode]=useState(()=>{
+    if(typeof window==='undefined')return false;
+    return new URLSearchParams(window.location.search).has('reset');
+  });
+
   // Restore session on load + subscribe to auth changes
   useEffect(()=>{
     let mounted=true;
@@ -1053,9 +1121,10 @@ function App(){
       }
       setAuthLoading(false);
     });
-    const{data:sub}=supabase.auth.onAuthStateChange(async(_evt,session)=>{
+    const{data:sub}=supabase.auth.onAuthStateChange(async(evt,session)=>{
       if(session?.user){const u=await fetchProfile(session.user);setUser(u);}
       else setUser(null);
+      if(evt==='PASSWORD_RECOVERY')setResetMode(true);
     });
     return()=>{mounted=false;sub.subscription.unsubscribe();};
   },[]);
@@ -1125,6 +1194,7 @@ function App(){
 
   return(<div className="app-root">
     {showAuth&&<AuthModal onAuth={login} onClose={()=>setShowAuth(false)}/>}
+    {resetMode&&<ResetPasswordModal onClose={()=>{setResetMode(false);window.history.replaceState({},'',SITE_URL);}} showToast={showToast}/>}
     {payProduct&&<PaymentModal product={payProduct} user={user} onClose={()=>{setPayProduct(null);setCart(c=>c+1);}} showToast={showToast}/>}
     {adminOpen&&!isAdmin&&(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setAdminOpen(false)}}>
