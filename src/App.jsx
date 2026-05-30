@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
-import { supabase, SITE_URL } from './lib/supabase';
+import { supabase, SITE_URL, withTimeout } from './lib/supabase';
 
 /* ─ STORAGE (legacy — being migrated to Supabase) ─ */
 const ls={
@@ -443,30 +443,43 @@ function AuthModal({onAuth,onClose}){
     setBusy(true);
     try{
       if(tab==='login'){
-        const {data,error}=await supabase.auth.signInWithPassword({email:f.email,password:f.password});
+        const {data,error}=await withTimeout(
+          supabase.auth.signInWithPassword({email:f.email,password:f.password}),
+          12000,
+          'Connexion'
+        );
         if(error){
           if(error.message==='Invalid login credentials')setErr('Email ou mot de passe incorrect.');
           else if(error.message?.includes('Email not confirmed'))setErr('Email non confirmé. Clique sur "Mot de passe oublié ?" pour recevoir un nouveau lien.');
           else setErr(error.message);
           return;
         }
-        const {data:profile}=await supabase.from('profiles').select('*').eq('id',data.user.id).single();
-        onAuth({...data.user,...profile});
+        const {data:profile}=await withTimeout(
+          supabase.from('profiles').select('*').eq('id',data.user.id).single(),
+          8000,
+          'Chargement du profil'
+        );
+        onAuth({...data.user,...(profile||{})});
       }else{
         if(!f.nom){setErr('Nom complet requis.');return;}
         if(f.password.length<6){setErr('Mot de passe : minimum 6 caractères.');return;}
-        const {data,error}=await supabase.auth.signUp({
-          email:f.email,
-          password:f.password,
-          options:{
-            data:{nom:f.nom,role},
-            emailRedirectTo: SITE_URL,
-          }
-        });
+        const {data,error}=await withTimeout(
+          supabase.auth.signUp({
+            email:f.email,
+            password:f.password,
+            options:{data:{nom:f.nom,role},emailRedirectTo: SITE_URL}
+          }),
+          12000,
+          'Inscription'
+        );
         if(error){setErr(error.message);return;}
         if(!data.session){setInfo('Compte créé ! Vérifie ta boîte mail pour confirmer ton email (le lien te renvoie sur le site).');return;}
-        const {data:profile}=await supabase.from('profiles').select('*').eq('id',data.user.id).single();
-        onAuth({...data.user,...profile});
+        const {data:profile}=await withTimeout(
+          supabase.from('profiles').select('*').eq('id',data.user.id).single(),
+          8000,
+          'Chargement du profil'
+        );
+        onAuth({...data.user,...(profile||{})});
       }
     }catch(ex){setErr(ex.message||'Erreur inconnue');}
     finally{setBusy(false);}
@@ -868,16 +881,23 @@ function VendeurDashboard({user, showToast, refreshAll}){
 
   const submit=async()=>{
     if(!form.nom||!form.prix){showToast('Nom et prix requis','err');return;}
+    if(photoFile && photoFile.size > 5*1024*1024){showToast('Photo trop lourde (>5 Mo). Compresse-la d\'abord.','err');return;}
     setBusy(true);
     try{
       let image_url=form.image_url;
       if(photoFile){
-        const ext=photoFile.name.split('.').pop().toLowerCase();
+        const ext=(photoFile.name.split('.').pop()||'jpg').toLowerCase();
         const path=`${user.id}/${Date.now()}.${ext}`;
-        const{error:upErr}=await supabase.storage.from('product-photos').upload(path,photoFile,{contentType:photoFile.type,upsert:false});
-        if(upErr){showToast('Upload échoué: '+upErr.message,'err');return;}
+        console.log('[serao] upload', path, photoFile.size, 'bytes');
+        const{error:upErr}=await withTimeout(
+          supabase.storage.from('product-photos').upload(path,photoFile,{contentType:photoFile.type,upsert:false}),
+          30000,
+          'Upload photo'
+        );
+        if(upErr){console.warn('[serao] upload error',upErr);showToast('Upload échoué : '+upErr.message,'err');return;}
         const{data:pub}=supabase.storage.from('product-photos').getPublicUrl(path);
         image_url=pub.publicUrl;
+        console.log('[serao] uploaded url', image_url);
       }
       const payload={
         vendeur_id:user.id,
@@ -893,10 +913,15 @@ function VendeurDashboard({user, showToast, refreshAll}){
         stock:Number(form.stock)||1,
         active:true,
       };
-      const res=editing==='new'
-        ? await supabase.from('products').insert(payload).select().single()
-        : await supabase.from('products').update(payload).eq('id',editing).select().single();
-      if(res.error){showToast(res.error.message,'err');return;}
+      console.log('[serao] product payload', payload);
+      const res=await withTimeout(
+        editing==='new'
+          ? supabase.from('products').insert(payload).select().single()
+          : supabase.from('products').update(payload).eq('id',editing).select().single(),
+        10000,
+        'Enregistrement du produit'
+      );
+      if(res.error){console.warn('[serao] product save error',res.error);showToast(res.error.message,'err');return;}
       showToast(editing==='new'?'Produit publié ✓':'Produit mis à jour ✓');
       cancel();
       load();refreshAll?.();
