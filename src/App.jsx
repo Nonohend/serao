@@ -38,6 +38,22 @@ const DEF_ARTICLES=[{id:1,min:8,date:'2026-02-15',auteur:'Ravo Andriamahefa',tit
 const CATS=[{emoji:'🫛',nom:'Vanille',count:5},{emoji:'🎨',nom:'Artisanat',count:4},{emoji:'🌶️',nom:'Épices',count:3},{emoji:'🧴',nom:'Cosmétiques',count:3},{emoji:'🧵',nom:'Textiles',count:3},{emoji:'💎',nom:'Bijoux',count:2}];
 const WHY=[{icon:'🛡️',t:'Authenticité garantie',b:'Chaque produit vérifié par nos experts et notre IA avancée.'},{icon:'🚀',t:'Livraison ultra-rapide',b:'SERAO Delivery : domicile, point relais ou retrait vendeur.'},{icon:'🌿',t:'Impact local direct',b:"Soutenez directement les artisans et producteurs malagasy."}];
 const VENDORS_D=[{emoji:'🌿',nom:'Vanille de Sava',ville:'SAVA',note:4.9,nb:5},{emoji:'🎭',nom:'Atelier Zafindraony',ville:'Antananarivo',note:4.7,nb:4},{emoji:'🌺',nom:'Ravinala Cosmetics',ville:'Toamasina',note:4.8,nb:3}];
+// Bandeau de valeurs (cf. planche de marque "Glass Malagasy")
+const VALEURS=[
+  {icon:'🛡️',t:'Confiance',s:'Sûr & fiable'},
+  {icon:'🛍️',t:'Commerce Digital',s:'Moderne & accessible'},
+  {icon:'🪡',t:'Artisanat Local',s:'Authentique & unique'},
+  {icon:'🌿',t:'Durable',s:'Responsable'},
+  {icon:'🇲🇬',t:'Fièrement Malagasy',s:'Lokaly, anisy antoky'},
+];
+// Technologie intégrée (5 piliers)
+const TECHS=[
+  {icon:'🔒',t:'Plateforme sécurisée',b:['Technologie moderne pour','des transactions fiables']},
+  {icon:'📱',t:'Commerce mobile',b:['Expérience fluide','sur tous les appareils']},
+  {icon:'📦',t:'Traçabilité locale',b:['Suivi des produits','et soutien aux artisans']},
+  {icon:'💳',t:'Paiement sécurisé',b:['Multiples moyens de','paiement Mobile Money']},
+  {icon:'☁️',t:'Technologie cloud',b:['Plateforme rapide,','stable et évolutive']},
+];
 
 /* ─ COMPONENTS ─ */
 const StarSVG=()=><svg width="12" height="12" viewBox="0 0 24 24" fill="#1aff9c" stroke="#1aff9c" strokeWidth="1"><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/></svg>;
@@ -774,6 +790,19 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
 
     <section className="section">
       <div className="wrap">
+        <div className="glass values-band">
+          {VALEURS.map((v,i)=>(
+            <div key={i} className="value-item">
+              <div className="value-ic">{v.icon}</div>
+              <div className="value-tx"><div className="value-t">{v.t}</div><div className="value-s">{v.s}</div></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section className="section" style={{paddingTop:0}}>
+      <div className="wrap">
         <div className="sec-top">
           <div><span className="sec-eye">Tendances</span><h2 className="sec-h">Les produits du moment</h2></div>
           <Btn v="glass" onClick={()=>nav('catalogue')}>Voir tout →</Btn>
@@ -786,6 +815,19 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
       <div className="wrap">
         <div className="sec-top"><div><span className="sec-eye">Explorer</span><h2 className="sec-h">Par catégorie</h2></div></div>
         <div className="catgrid">{CATS.map((c,i)=><div key={i} className="cattile" onClick={()=>nav('catalogue')}><div className="cat-emo">{c.emoji}</div><div className="cat-name">{c.nom}</div><div className="cat-count">{c.count} produits</div></div>)}</div>
+      </div>
+    </section>
+
+    <section className="section" style={{paddingTop:0}}>
+      <div className="wrap">
+        <div className="sec-top"><div><span className="sec-eye">Technologie intégrée</span><h2 className="sec-h">Une base solide & moderne</h2></div></div>
+        <div className="tech-grid">{TECHS.map((t,i)=>(
+          <div key={i} className="glass tech-card">
+            <div className="tech-ic">{t.icon}</div>
+            <div className="tech-t">{t.t}</div>
+            <div className="tech-b">{t.b.map((line,j)=><span key={j}>{line}</span>)}</div>
+          </div>
+        ))}</div>
       </div>
     </section>
 
@@ -881,7 +923,7 @@ function PageLivraison(){
           <div key={i} className="glass" style={{padding:'28px',textAlign:'center',borderRadius:'var(--r-xl)'}}>
             <div style={{fontSize:'36px',marginBottom:'12px'}}>{l.icon}</div>
             <div style={{fontFamily:'var(--font-display)',fontSize:'17px',fontWeight:700,marginBottom:'6px'}}>{l.nom}</div>
-            <div style={{color:'var(--cyan-light)',fontWeight:600,marginBottom:'4px'}}>{l.prix}</div>
+            <div style={{color:'var(--emerald-glow)',fontWeight:600,marginBottom:'4px'}}>{l.prix}</div>
             <div style={{fontSize:'13px',color:'var(--muted)'}}>⏱ {l.d}</div>
           </div>
         ))}
@@ -1281,6 +1323,14 @@ function App(){
   const[articles]=useState(()=>ls.get('articles',DEF_ARTICLES));
   const[orders,setOrders]=useState([]);
   const[stats,setStats]=useState(null);
+  const[theme,setTheme]=useState(()=>{try{return localStorage.getItem('serao-theme')||'light';}catch{return 'light';}});
+
+  // Apply the theme to <html data-theme> and remember the choice.
+  useEffect(()=>{
+    document.documentElement.dataset.theme=theme;
+    try{localStorage.setItem('serao-theme',theme);}catch{}
+  },[theme]);
+  const toggleTheme=()=>setTheme(t=>t==='dark'?'light':'dark');
 
   const nav=p=>{setPage(p);setMenu(false);setUserMenu(false);window.scrollTo({top:0,behavior:'smooth'});};
   const showToast=(msg,type='ok')=>{setToast(msg);setToastType(type);setTimeout(()=>setToast(''),4000);};
@@ -1484,6 +1534,11 @@ function App(){
         <div className="nav-logo" onClick={handleLogo}>SERAO</div>
         <div className="navlinks">{LINKS.map(l=><div key={l.id} className={'nl'+(page===l.id?' on':'')} onClick={()=>nav(l.id)}>{l.l}</div>)}</div>
         <div className="nav-r">
+          <button className="nav-iconbtn" onClick={toggleTheme} title={theme==='dark'?'Passer en clair':'Passer en sombre'} aria-label="Changer de thème">
+            {theme==='dark'
+              ?<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+              :<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
+          </button>
           {user?(<>
             <button className="nav-iconbtn" onClick={()=>setShowChat(s=>!s)} title="Messages">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
