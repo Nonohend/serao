@@ -7,7 +7,6 @@ const ls={
   get:(k,d)=>{try{const v=localStorage.getItem('serao_'+k);return v?JSON.parse(v):d;}catch{return d;}},
   set:(k,v)=>{try{localStorage.setItem('serao_'+k,JSON.stringify(v));}catch{}},
 };
-let bc; try{bc=new BroadcastChannel('serao_chat');}catch{}
 
 /* ─ Map a Supabase product row into the shape our components expect ─ */
 const mapProductRow = (r) => ({
@@ -35,11 +34,7 @@ const avColor=n=>{const c=['linear-gradient(135deg,rgba(20,123,99,0.4),rgba(6,21
 
 /* ─ DATA ─ */
 const PUB_CHANNELS=[{id:'general',name:'# Général',icon:'💬',desc:'Discussion générale'},{id:'annonces',name:'# Annonces',icon:'📢',desc:'Officiel'},{id:'vanille',name:'# Vanille',icon:'🫛',desc:'Produits vanille'},{id:'artisanat',name:'# Artisanat',icon:'🎨',desc:'Artisanat'},{id:'marche',name:'# Marché',icon:'🛍️',desc:'Achats & ventes'}];
-const DEF_USERS=[{id:'u1',nom:'Admin SERAO',email:'admin@serao.mg',password:'serao2026',role:'admin',createdAt:'2026-01-01'},{id:'u2',nom:'Vanille de Sava',email:'vanille@sava.mg',password:'vendeur123',role:'vendeur',createdAt:'2026-01-10'},{id:'u3',nom:'Ravo Acheteur',email:'ravo@gmail.com',password:'acheteur123',role:'acheteur',createdAt:'2026-02-01'}];
-const DEF_MSGS=[{id:'m1',from:'u2',to:'channel:general',content:'Bienvenue sur SERAO ! Nouvelle vanille premium disponible 🫛',ts:'2026-05-08T08:00:00Z',read:[]},{id:'m2',from:'u3',to:'channel:general',content:'Super ! Quels délais de livraison pour Antananarivo ?',ts:'2026-05-08T08:10:00Z',read:[]},{id:'m3',from:'u2',to:'u3',content:'Bonjour ! 3 jours pour Antananarivo. Je vous prépare une offre spéciale.',ts:'2026-05-08T11:00:00Z',read:['u2']}];
-const DEF_PRODUCTS=[{id:1,emoji:'🫛',img:'https://images.unsplash.com/photo-1606471191009-63994c53433b?w=500&q=80&auto=format&fit=crop',badge:'top',cat:'Vanille',region:'SAVA',nom:'Vanille Bourbon Premium',prix:120000,note:4.9,deliv:'3-5 jours'},{id:2,emoji:'🧴',img:'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&q=80&auto=format&fit=crop',badge:'spons',cat:'Cosmétiques',region:'Toamasina',nom:'Huile de Baobab Pure',prix:48000,note:4.8,deliv:'3-5 jours'},{id:3,emoji:'🫛',img:'https://images.unsplash.com/photo-1638176067000-9e2c1f3ffb13?w=500&q=80&auto=format&fit=crop',badge:'new',cat:'Vanille',region:'SAVA',nom:'Vanille en Poudre Bio',prix:45000,note:4.7,deliv:'3-5 jours'},{id:4,emoji:'🎨',img:'https://images.unsplash.com/photo-1611348586804-61bf6c080437?w=500&q=80&auto=format&fit=crop',badge:'top',cat:'Artisanat',region:'Antananarivo',nom:'Sculpture Palissandre',prix:250000,note:4.8,deliv:'5-7 jours'},{id:5,emoji:'🌶️',img:'https://images.unsplash.com/photo-1599909366516-6c1f4e2ed0d8?w=500&q=80&auto=format&fit=crop',badge:'top',cat:'Épices',region:'Fianarantsoa',nom:'Poivre Sauvage Voatsiperifery',prix:65000,note:4.9,deliv:'4-6 jours'},{id:6,emoji:'🧵',img:'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=500&q=80&auto=format&fit=crop',badge:'top',cat:'Textiles',region:'Ambalavao',nom:'Écharpe Soie Sauvage',prix:185000,note:4.9,deliv:'5-7 jours'},{id:7,emoji:'💎',img:'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=500&q=80&auto=format&fit=crop',badge:'spons',cat:'Bijoux',region:'Ilakaka',nom:'Saphir Bleu Brut',prix:850000,note:4.8,deliv:'2-3 jours'},{id:8,emoji:'🌶️',img:'https://images.unsplash.com/photo-1584569318686-28b7e48a1f3d?w=500&q=80&auto=format&fit=crop',badge:null,cat:'Épices',region:'Toamasina',nom:'Baie Rose de Madagascar',prix:28000,note:4.6,deliv:'3-5 jours'},{id:9,emoji:'🧴',img:'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&q=80&auto=format&fit=crop',badge:'new',cat:'Cosmétiques',region:'Nosy Be',nom:'Savon Ylang-Ylang',prix:15000,note:4.6,deliv:'3-5 jours'},{id:10,emoji:'🫛',img:'https://images.unsplash.com/photo-1631377306629-0f7e3c4c8fdb?w=500&q=80&auto=format&fit=crop',badge:'spons',cat:'Vanille',region:'SAVA',nom:'Coffret Découverte Vanille',prix:180000,note:5.0,deliv:'3-5 jours'},{id:11,emoji:'🎨',img:'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=500&q=80&auto=format&fit=crop',badge:'new',cat:'Artisanat',region:'Mahajanga',nom:'Masque Décoratif Sakalava',prix:85000,note:4.7,deliv:'5-7 jours'},{id:12,emoji:'💎',img:'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=500&q=80&auto=format&fit=crop',badge:null,cat:'Bijoux',region:'Ilakaka',nom:'Bracelet Perles Pierres',prix:75000,note:4.4,deliv:'3-5 jours'}];
 const DEF_ARTICLES=[{id:1,min:8,date:'2026-02-15',auteur:'Ravo Andriamahefa',titre:'Top 10 des produits artisanaux malagasy',extrait:"Découvrez les trésors de l'artisanat malgache, des sculptures en palissandre aux tissages en soie sauvage.",tags:['artisanat','guide','culture'],publie:true},{id:2,min:6,date:'2026-02-10',auteur:'Nirina Rakoto',titre:'Pourquoi la vanille de Madagascar est unique',extrait:"La vanille bourbon de Madagascar représente 80% de la production mondiale. Découvrez ce qui la rend si spéciale.",tags:['vanille','agriculture'],publie:true},{id:3,min:5,date:'2026-01-28',auteur:'Fanja Rasoa',titre:'Produits naturels malagasy pour la peau',extrait:"Huile de baobab, beurre de karité... Les secrets beauté de Madagascar.",tags:['cosmétiques','beauté','naturel'],publie:true},{id:4,min:7,date:'2026-01-20',auteur:'Hery Rajoelina',titre:"Reconnaître un artisanat authentique",extrait:"Les clés pour distinguer les véritables créations artisanales des imitations industrielles.",tags:['artisanat','guide'],publie:true}];
-const DEF_ORDERS=[{id:'CMD-001',produit:'Vanille Bourbon Premium',client:'Ravo Acheteur',montant:120000,status:'livre',date:'2026-05-01'},{id:'CMD-002',produit:'Huile de Baobab Pure',client:'Marie Rakoto',montant:48000,status:'transit',date:'2026-05-03'},{id:'CMD-003',produit:'Écharpe Soie Sauvage',client:'Pierre Martin',montant:185000,status:'expedie',date:'2026-05-05'}];
 const CATS=[{emoji:'🫛',nom:'Vanille',count:5},{emoji:'🎨',nom:'Artisanat',count:4},{emoji:'🌶️',nom:'Épices',count:3},{emoji:'🧴',nom:'Cosmétiques',count:3},{emoji:'🧵',nom:'Textiles',count:3},{emoji:'💎',nom:'Bijoux',count:2}];
 const WHY=[{icon:'🛡️',t:'Authenticité garantie',b:'Chaque produit vérifié par nos experts et notre IA avancée.'},{icon:'🚀',t:'Livraison ultra-rapide',b:'SERAO Delivery : domicile, point relais ou retrait vendeur.'},{icon:'🌿',t:'Impact local direct',b:"Soutenez directement les artisans et producteurs malagasy."}];
 const VENDORS_D=[{emoji:'🌿',nom:'Vanille de Sava',ville:'SAVA',note:4.9,nb:5},{emoji:'🎭',nom:'Atelier Zafindraony',ville:'Antananarivo',note:4.7,nb:4},{emoji:'🌺',nom:'Ravinala Cosmetics',ville:'Toamasina',note:4.8,nb:3}];
@@ -84,28 +79,28 @@ function PaymentModal({product, onClose, showToast, user}){
   const[phone,setPhone]=useState('');
   const[status,setStatus]=useState('select'); // select | processing | success
   const[orderId,setOrderId]=useState(null);
+  const[rated,setRated]=useState(0);
   const methods=[{id:'mvola',icon:'📱',name:'MVola',color:'#E30913'},{id:'orange',icon:'🟠',name:'Orange Money',color:'#FF6600'},{id:'airtel',icon:'❤️',name:'Airtel Money',color:'#FF0000'}];
   const pay=async()=>{
     if(!method||!phone){showToast('Sélectionnez un moyen de paiement et entrez votre numéro','err');return;}
     setStatus('processing');
-    // simulate gateway delay then create real order row in Supabase
+    // Simulate the Mobile Money gateway delay, then create the order via the
+    // server-side RPC. The amount is recomputed from the product price in the
+    // database, so a tampered client can never spoof the price (cf. S4).
     setTimeout(async()=>{
       try{
-        const{data,error}=await supabase.from('orders').insert({
-          acheteur_id:user?.id,
-          product_id:product?.id,
-          vendeur_id:product?.vendeur_id||null,
-          product_nom:product?.nom||'',
-          montant:product?.prix||0,
-          pay_method:method,
-          pay_tx_ref:'TXN-'+Date.now().toString().slice(-8),
-          status:'confirme',
-        }).select().single();
-        if(error){console.warn('order insert failed',error);showToast('Erreur enregistrement commande','err');setStatus('select');return;}
-        setOrderId(data.id);
+        const{data,error}=await supabase.rpc('create_order',{p_product_id:product?.id,p_pay_method:method});
+        if(error){console.warn('order create failed',error);showToast('Erreur enregistrement commande : '+error.message,'err');setStatus('select');return;}
+        setOrderId(data?.id);
         setStatus('success');
-      }catch(ex){console.warn(ex);setStatus('select');}
+      }catch(ex){console.warn(ex);showToast('Erreur réseau, réessaie','err');setStatus('select');}
     },2200);
+  };
+  // Quick post-purchase rating — feeds the real products.note average (cf. reviews table).
+  const rate=async(n)=>{
+    setRated(n);
+    try{await supabase.from('reviews').upsert({product_id:product?.id,auteur_id:user?.id,note:n},{onConflict:'product_id,auteur_id'});}
+    catch(ex){console.warn('review failed',ex);}
   };
   return(
     <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
@@ -153,6 +148,15 @@ function PaymentModal({product, onClose, showToast, user}){
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',fontSize:'13px',marginBottom:'24px'}}>
               <div style={{padding:'12px',background:'var(--glass-1)',borderRadius:'var(--r-md)',textAlign:'center'}}><div style={{color:'var(--muted)',marginBottom:'4px'}}>Réf. commande</div><div style={{fontWeight:700,color:'var(--cyan-light)'}}>{orderId||'…'}</div></div>
               <div style={{padding:'12px',background:'var(--glass-1)',borderRadius:'var(--r-md)',textAlign:'center'}}><div style={{color:'var(--muted)',marginBottom:'4px'}}>Délai livraison</div><div style={{fontWeight:700,color:'var(--cyan-light)'}}>{product?.deliv}</div></div>
+            </div>
+            <div style={{marginBottom:'20px'}}>
+              <div style={{color:'var(--muted)',fontSize:'13px',marginBottom:'8px'}}>Notez ce produit</div>
+              <div style={{display:'flex',gap:'8px',justifyContent:'center',fontSize:'30px'}}>
+                {[1,2,3,4,5].map(n=>(
+                  <span key={n} onClick={()=>rate(n)} role="button" aria-label={`${n} étoile${n>1?'s':''}`} style={{cursor:'pointer',transition:'transform .15s',transform:n<=rated?'scale(1.1)':'none',filter:n<=rated?'none':'grayscale(1)',opacity:n<=rated?1:0.45}}>⭐</span>
+                ))}
+              </div>
+              {rated>0&&<div style={{color:'var(--emerald-glow)',fontSize:'12px',marginTop:'8px'}}>Merci pour votre avis !</div>}
             </div>
             <Btn onClick={onClose} style={{width:'100%'}}>Retour au catalogue</Btn>
           </div>
@@ -312,7 +316,7 @@ function ChatWindow({user,onClose}){
     let mounted=true;
     (async()=>{
       const[p,m]=await Promise.all([
-        supabase.from('profiles').select('id,nom,email,role'),
+        supabase.from('profiles').select('id,nom,role'),
         supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(500),
       ]);
       if(!mounted)return;
@@ -644,7 +648,7 @@ function AdminPanel({onClose, refreshProducts}){
     const[p,o,u,m]=await Promise.all([
       supabase.from('products').select('*,category:categories(nom,slug,emoji)').order('created_at',{ascending:false}),
       supabase.from('orders').select('*').order('created_at',{ascending:false}),
-      supabase.from('profiles').select('*').order('created_at',{ascending:false}),
+      supabase.rpc('admin_list_users'), // full rows incl. email, gated by is_admin() (cf. S3)
       supabase.from('messages').select('*').order('created_at',{ascending:false}).limit(100),
     ]);
     setProducts(p.data||[]);
@@ -676,7 +680,7 @@ function AdminPanel({onClose, refreshProducts}){
     setOrders(orders.map(x=>x.id===o.id?{...x,status}:x));
   };
   const setUserRole=async(u,role)=>{
-    const{error}=await supabase.from('profiles').update({role}).eq('id',u.id);
+    const{error}=await supabase.rpc('admin_set_role',{p_user:u.id,p_role:role});
     if(error){window.alert(error.message);return;}
     setUsers(users.map(x=>x.id===u.id?{...x,role}:x));
   };
@@ -739,7 +743,14 @@ function AdminPanel({onClose, refreshProducts}){
 }
 
 /* ─ PAGES ─ */
-function PageAccueil({nav,onBuy,products,articles}){
+function PageAccueil({nav,onBuy,products,articles,stats}){
+  const compact=n=>{n=Number(n)||0;if(n>=1000)return (n/1000).toFixed(n>=10000?0:1).replace('.0','')+'K';return String(n);};
+  const heroStats=[
+    {v:stats?compact(stats.vendeurs):'—',l:'Vendeurs actifs'},
+    {v:stats?compact(stats.produits):'—',l:'Produits en ligne'},
+    {v:stats?compact(stats.membres):'—',l:'Membres inscrits'},
+    {v:'48h',l:'Livraison max'},
+  ];
   return(<>
     <section className="hero">
       <div className="wrap" style={{width:'100%'}}>
@@ -752,7 +763,7 @@ function PageAccueil({nav,onBuy,products,articles}){
             <Btn v="glass" onClick={()=>nav('vendeur')}>🏪 Devenir vendeur</Btn>
           </div>
           <div className="hero-stats">
-            {[{v:'100+',l:'Vendeurs vérifiés'},{v:'2K+',l:'Produits authentiques'},{v:'5K+',l:'Clients satisfaits'},{v:'48h',l:'Livraison max'}].map((s,i)=>(
+            {heroStats.map((s,i)=>(
               <div key={i} className="hero-stat"><div className="hero-stat-val">{s.v}</div><div className="hero-stat-lbl">{s.l}</div></div>
             ))}
           </div>
@@ -910,6 +921,73 @@ function PageAPropos({nav}){
       <div style={{marginTop:'40px'}}><div className="cta-band"><div><div style={{fontFamily:'var(--font-display)',fontSize:'28px',fontWeight:800,color:'#fff',marginBottom:'8px'}}>Rejoignez l'aventure</div><div style={{color:'rgba(255,255,255,.7)'}}>Que vous soyez vendeur ou acheteur, SERAO est votre plateforme.</div></div><Btn v="glass" onClick={()=>nav('vendeur')} style={{color:'#fff',borderColor:'rgba(255,255,255,0.3)',background:'rgba(255,255,255,0.1)'}}>Commencer →</Btn></div></div>
     </div></section>
   </div>);
+}
+
+/* ─ SIMPLE CONTENT PAGE (legal / info) ─ */
+function PageContenu({titre,sous,sections}){
+  return(<div>
+    <div className="page-hero"><div className="wrap"><h1>{titre}</h1><p>{sous}</p></div></div>
+    <section className="section"><div className="wrap" style={{maxWidth:'820px'}}>
+      {sections.map((s,i)=>(
+        <div key={i} className="glass" style={{padding:'28px',borderRadius:'var(--r-xl)',marginBottom:'16px'}}>
+          <h2 style={{fontFamily:'var(--font-display)',fontSize:'19px',fontWeight:700,marginBottom:'10px',color:'var(--text)'}}>{s.q}</h2>
+          <p style={{fontSize:'15px',color:'var(--muted)',lineHeight:1.7,whiteSpace:'pre-line'}}>{s.a}</p>
+        </div>
+      ))}
+    </div></section>
+  </div>);
+}
+
+function PageFAQ(){
+  return <PageContenu titre="Foire aux questions" sous="Les réponses aux questions les plus fréquentes sur SERAO." sections={[
+    {q:'Comment passer une commande ?',a:"Parcourez le catalogue, cliquez sur un produit puis sur « + ». Connectez-vous (ou créez un compte), choisissez votre moyen de paiement Mobile Money (MVola, Orange Money ou Airtel Money) et validez. Vous recevez une référence de commande immédiatement."},
+    {q:'Quels sont les moyens de paiement acceptés ?',a:"SERAO accepte MVola, Orange Money et Airtel Money. Le montant est toujours calculé à partir du prix réel du produit côté serveur — il ne peut pas être modifié."},
+    {q:'Combien coûte la livraison ?',a:"Domicile : 15 000–30 000 Ar · Point relais : 8 000–15 000 Ar · Retrait chez le vendeur : gratuit. Les délais vont de 2 à 7 jours selon la région."},
+    {q:'Comment devenir vendeur ?',a:"Créez un compte, allez dans « Devenir vendeur » et activez votre statut en un clic. L'inscription est gratuite : une commission de 3 % s'applique uniquement sur les ventes réalisées."},
+    {q:'Mes données sont-elles protégées ?',a:"Oui. Votre email et votre téléphone ne sont jamais visibles par les autres membres. Seuls votre nom public et votre rôle le sont. Voir notre page Confidentialité."},
+  ]}/>;
+}
+
+function PageContact({showToast}){
+  const[f,setF]=useState({nom:'',email:'',msg:''});
+  const set=(k,v)=>setF(ff=>({...ff,[k]:v}));
+  const submit=e=>{e.preventDefault();if(!f.nom||!f.email||!f.msg){showToast('Remplis tous les champs','err');return;}showToast('Message envoyé ✓ Nous te répondrons vite.');setF({nom:'',email:'',msg:''});};
+  return(<div>
+    <div className="page-hero"><div className="wrap"><h1>Contact</h1><p>Une question, un partenariat, un souci ? Écris-nous.</p></div></div>
+    <section className="section"><div className="wrap" style={{maxWidth:'600px'}}>
+      <div className="glass" style={{padding:'28px',borderRadius:'var(--r-xl)',marginBottom:'20px',display:'grid',gap:'10px',fontSize:'14px',color:'var(--muted)'}}>
+        <div>📧 <strong style={{color:'var(--text)'}}>contact@serao.mg</strong></div>
+        <div>📞 <strong style={{color:'var(--text)'}}>+261 34 00 000 00</strong></div>
+        <div>📍 Antananarivo, Madagascar · Lun–Sam 8h–18h</div>
+      </div>
+      <form onSubmit={submit}>
+        <div className="fg"><label className="fl">Nom</label><input className="fi" value={f.nom} onChange={e=>set('nom',e.target.value)} placeholder="Votre nom"/></div>
+        <div className="fg"><label className="fl">Email</label><input className="fi" type="email" value={f.email} onChange={e=>set('email',e.target.value)} placeholder="votre@email.com"/></div>
+        <div className="fg"><label className="fl">Message</label><textarea className="fi" rows="5" value={f.msg} onChange={e=>set('msg',e.target.value)} placeholder="Votre message..."/></div>
+        <Btn type="submit" style={{width:'100%'}}>Envoyer le message</Btn>
+      </form>
+    </div></section>
+  </div>);
+}
+
+function PageCGU(){
+  return <PageContenu titre="Conditions générales d'utilisation" sous="En vigueur · Dernière mise à jour : 2026." sections={[
+    {q:'1. Objet',a:"SERAO est une marketplace mettant en relation des vendeurs et des acheteurs de produits malagasy. Les présentes conditions régissent l'utilisation de la plateforme."},
+    {q:'2. Compte',a:"L'inscription est gratuite. Vous êtes responsable de la confidentialité de vos identifiants et de toute activité réalisée depuis votre compte."},
+    {q:'3. Ventes et commission',a:"Les vendeurs fixent librement leurs prix. SERAO prélève une commission de 3 % sur chaque vente réalisée. Les vendeurs s'engagent à proposer des produits authentiques et conformes."},
+    {q:'4. Paiement et livraison',a:"Les paiements s'effectuent via Mobile Money. Les délais et frais de livraison sont indiqués avant la validation de la commande."},
+    {q:'5. Responsabilité',a:"SERAO agit comme intermédiaire. La responsabilité de la conformité des produits incombe au vendeur. Tout litige peut être signalé via la page Contact."},
+  ]}/>;
+}
+
+function PageConfidentialite(){
+  return <PageContenu titre="Politique de confidentialité" sous="Comment nous protégeons vos données personnelles." sections={[
+    {q:'Données collectées',a:"Nous collectons : votre nom, votre email, et éventuellement votre téléphone et région. Ces informations sont nécessaires à la création de votre compte et au traitement des commandes."},
+    {q:'Visibilité de vos données',a:"Votre email et votre téléphone ne sont JAMAIS visibles par les autres membres. Seuls votre nom public et votre rôle (acheteur/vendeur) apparaissent. L'accès complet est réservé à l'administration, à des fins de support."},
+    {q:'Sécurité',a:"L'accès aux données est protégé par des règles de sécurité au niveau de la base (Row Level Security). Aucun visiteur non connecté ne peut consulter la liste des membres."},
+    {q:'Vos droits',a:"Vous pouvez demander la consultation, la rectification ou la suppression de vos données à tout moment via la page Contact."},
+    {q:'Cookies',a:"SERAO utilise uniquement un stockage local technique pour maintenir votre session connectée. Aucun cookie publicitaire tiers n'est nécessaire au fonctionnement du site."},
+  ]}/>;
 }
 
 /* ─ VENDOR DASHBOARD — list & manage own products ─ */
@@ -1112,7 +1190,10 @@ function VendeurDashboard({user, showToast, refreshAll}){
 function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
   const becomeVendor=async()=>{
     if(!user){setShowAuth(true);return;}
-    const{error}=await supabase.from('profiles').update({role:'vendeur'}).eq('id',user.id);
+    // Role change goes through a controlled SECURITY DEFINER function: the
+    // client can no longer write `role` directly (cf. S2). It only ever
+    // promotes acheteur → vendeur, never to admin.
+    const{error}=await supabase.rpc('request_vendor');
     if(error){showToast(error.message,'err');return;}
     showToast('Tu es maintenant vendeur 🎉');
     refreshUser?.();
@@ -1168,7 +1249,7 @@ function Footer({nav}){
         </div>
       </div>
       <div className="footer-cols">
-        {[{t:'Marketplace',items:[['catalogue','Catalogue'],['catalogue','Vanille'],['catalogue','Artisanat'],['catalogue','Épices']]},{t:'Services',items:[['livraison','Livraison'],['live','Live Shopping'],['livraison','Points relais'],['vendeur','Devenir vendeur']]},{t:'Infos',items:[['apropos','À propos'],['blog','Blog'],['apropos','Contact'],['apropos','FAQ']]},{t:'Légal',items:[['apropos','Confidentialité'],['apropos','Conditions'],['apropos','Cookies']]}].map(c=>(
+        {[{t:'Marketplace',items:[['catalogue','Catalogue'],['catalogue','Vanille'],['catalogue','Artisanat'],['catalogue','Épices']]},{t:'Services',items:[['livraison','Livraison'],['live','Live Shopping'],['livraison','Points relais'],['vendeur','Devenir vendeur']]},{t:'Infos',items:[['apropos','À propos'],['blog','Blog'],['contact','Contact'],['faq','FAQ']]},{t:'Légal',items:[['confidentialite','Confidentialité'],['cgu','Conditions'],['confidentialite','Cookies']]}].map(c=>(
           <div key={c.t}><div className="footer-col-title">{c.t}</div>{c.items.map(([page,label])=><div key={label} className="footer-link" onClick={()=>nav(page)}>{label}</div>)}</div>
         ))}
       </div>
@@ -1188,6 +1269,7 @@ function App(){
   const[authLoading,setAuthLoading]=useState(true);
   const[showAuth,setShowAuth]=useState(false);
   const[showChat,setShowChat]=useState(false);
+  const[unread,setUnread]=useState(0);
   const[adminOpen,setAdminOpen]=useState(false);
   const[userMenu,setUserMenu]=useState(false);
   const[payProduct,setPayProduct]=useState(null);
@@ -1198,6 +1280,7 @@ function App(){
   const[products,setProducts]=useState([]);
   const[articles]=useState(()=>ls.get('articles',DEF_ARTICLES));
   const[orders,setOrders]=useState([]);
+  const[stats,setStats]=useState(null);
 
   const nav=p=>{setPage(p);setMenu(false);setUserMenu(false);window.scrollTo({top:0,behavior:'smooth'});};
   const showToast=(msg,type='ok')=>{setToast(msg);setToastType(type);setTimeout(()=>setToast(''),4000);};
@@ -1209,8 +1292,11 @@ function App(){
   const fetchProfile=async(authUser)=>{
     if(!authUser)return null;
     try{
+      // Only the columns `authenticated` is allowed to read (cf. S3). The
+      // email comes from the auth session (authUser.email), so we never need
+      // to expose it through the profiles table.
       const{data,error}=await withTimeout(
-        supabase.from('profiles').select('*').eq('id',authUser.id).maybeSingle(),
+        supabase.from('profiles').select('id,nom,role,region,avatar_url,verified,created_at').eq('id',authUser.id).maybeSingle(),
         10000,
         'Chargement du profil'
       );
@@ -1270,6 +1356,17 @@ function App(){
   },[]);
   useEffect(()=>{refreshProducts();},[refreshProducts]);
 
+  // Real platform stats for the homepage hero (counts only, no PII).
+  useEffect(()=>{
+    let mounted=true;
+    (async()=>{
+      const{data,error}=await supabase.rpc('platform_stats');
+      if(!mounted||error)return;
+      setStats(data);
+    })();
+    return()=>{mounted=false;};
+  },[]);
+
   const refreshUser=useCallback(async()=>{
     const{data:{user:au}}=await supabase.auth.getUser();
     if(!au){setUser(null);return;}
@@ -1293,6 +1390,39 @@ function App(){
     })();
     return()=>{mounted=false;};
   },[user]);
+
+  // Real unread badge (replaces the old localStorage stub).
+  // Counts messages addressed to me (public channels or my DMs) that arrived
+  // after the last time I opened the chat. "Last seen" is stored per-user in
+  // localStorage, so opening the chat clears the badge — no DB write needed.
+  useEffect(()=>{
+    if(!user){setUnread(0);return;}
+    let mounted=true;
+    const seenKey='serao_lastseen_'+user.id;
+    const calc=async()=>{
+      const since=localStorage.getItem(seenKey)||'1970-01-01T00:00:00Z';
+      const{data}=await supabase
+        .from('messages')
+        .select('id,from_user,channel,to_user,created_at')
+        .gt('created_at',since)
+        .order('created_at',{ascending:false})
+        .limit(100);
+      if(!mounted)return;
+      const n=(data||[]).filter(m=>m.from_user!==user.id&&(m.channel||m.to_user===user.id)).length;
+      setUnread(n);
+    };
+    calc();
+    const iv=setInterval(calc,15000);
+    return()=>{mounted=false;clearInterval(iv);};
+  },[user,showChat]);
+
+  // Opening the chat marks everything up to now as seen.
+  useEffect(()=>{
+    if(showChat&&user){
+      try{localStorage.setItem('serao_lastseen_'+user.id,new Date().toISOString());}catch{}
+      setUnread(0);
+    }
+  },[showChat,user]);
 
   const login=async(authUser)=>{
     // Hydrate with profile in the background so the toast can show the user's
@@ -1320,8 +1450,6 @@ function App(){
     setLogoClicks(n=>{const nx=n+1;clearTimeout(logoTimer.current);logoTimer.current=setTimeout(()=>setLogoClicks(0),2000);if(nx>=5){setLogoClicks(0);setAdminOpen(true);}return nx;});
   };
 
-  const msgs=ls.get('messages',DEF_MSGS);
-  const unread=user?msgs.filter(m=>(m.to===user.id||(m.to&&m.to.startsWith('channel:')))&&!(m.read||[]).includes(user.id)).length:0;
   const LINKS=[{id:'accueil',l:'Accueil'},{id:'catalogue',l:'Catalogue'},{id:'blog',l:'Blog'},{id:'livraison',l:'Livraison'},{id:'live',l:'Live'},{id:'apropos',l:'À propos'}];
 
   const isAdmin=user?.role==='admin';
@@ -1395,12 +1523,16 @@ function App(){
       {user?<div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowChat(true);setMenu(false);}}>💬 Messages{unread>0&&` (${unread})`}</div>:<div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowAuth(true);setMenu(false);}}>🔑 Se connecter</div>}
     </div>
 
-    {page==='accueil'   &&<PageAccueil nav={nav} onBuy={onBuy} products={products} articles={articles}/>}
+    {page==='accueil'   &&<PageAccueil nav={nav} onBuy={onBuy} products={products} articles={articles} stats={stats}/>}
     {page==='catalogue' &&<PageCatalogue products={products} onBuy={onBuy}/>}
     {page==='blog'      &&<PageBlog articles={articles}/>}
     {page==='livraison' &&<PageLivraison/>}
     {page==='live'      &&<PageLive/>}
     {page==='apropos'   &&<PageAPropos nav={nav}/>}
+    {page==='faq'       &&<PageFAQ/>}
+    {page==='contact'   &&<PageContact showToast={showToast}/>}
+    {page==='cgu'       &&<PageCGU/>}
+    {page==='confidentialite'&&<PageConfidentialite/>}
     {page==='vendeur'   &&<PageVendeur user={user} showToast={showToast} setShowAuth={setShowAuth} refreshUser={refreshUser} refreshProducts={refreshProducts}/>}
 
     <Footer nav={nav}/>
