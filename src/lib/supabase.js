@@ -27,6 +27,17 @@ if (typeof window !== 'undefined') {
   } catch {}
 }
 
+// Passthrough auth lock.
+// supabase-js v2 defaults to a Web Locks (navigator.locks) based lock that
+// serialises every auth operation across ALL tabs of the same origin. When one
+// operation acquires that lock and fails to release it — a well-known class of
+// bugs in Chromium and Safari — every later signIn / getSession / refresh,
+// *including in other tabs*, hangs forever. Symptom: the login works once, then
+// the modal stays stuck on the next attempt, and two tabs block each other.
+// This app does not need cross-tab refresh coordination, so we bypass the lock
+// entirely and just run the operation.
+const passthroughLock = async (_name, _acquireTimeout, fn) => fn();
+
 export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
@@ -34,16 +45,21 @@ export const supabase = createClient(url, key, {
     storageKey: 'serao_auth',
     detectSessionInUrl: true,
     flowType: 'pkce',
+    lock: passthroughLock,
   },
 });
 
 // Helper: wrap a promise with a timeout so the UI can never stay stuck in
 // "loading" forever if the network or Supabase silently hangs.
-export function withTimeout(promise, ms = 12000, label = 'Opération') {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} : délai dépassé (réseau ?)`)), ms)
-    ),
-  ]);
+// Clears the timer when the wrapped promise settles first, otherwise the
+// callback keeps running in the background after the race already resolved.
+export function withTimeout(promise, ms = 20000, label = 'Opération') {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} : délai dépassé (réseau ?)`)),
+      ms
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }

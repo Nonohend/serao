@@ -482,7 +482,7 @@ function ChatWindow({user,onClose}){
 }
 
 /* ─ AUTH MODAL ─ */
-function AuthModal({onAuth,onClose}){
+function AuthModal({onAuth,onClose,user}){
   const[tab,setTab]=useState('login');
   const[role,setRole]=useState('acheteur');
   const[f,setF]=useState({nom:'',email:'',password:''});
@@ -490,6 +490,11 @@ function AuthModal({onAuth,onClose}){
   const[info,setInfo]=useState('');
   const[busy,setBusy]=useState(false);
   const set=(k,v)=>{setF(ff=>({...ff,[k]:v}));setErr('');setInfo('');};
+
+  // Safety net: if the global auth listener sets `user` before our local await
+  // chain finishes (e.g. SIGNED_IN event arrives first), close the modal.
+  useEffect(()=>{if(user)onClose();},[user,onClose]);
+
   const submit=async e=>{
     e.preventDefault();setErr('');setInfo('');
     if(!f.email||!f.password){setErr('Email et mot de passe requis.');return;}
@@ -497,8 +502,8 @@ function AuthModal({onAuth,onClose}){
     try{
       if(tab==='login'){
         const {data,error}=await withTimeout(
-          supabase.auth.signInWithPassword({email:f.email,password:f.password}),
-          12000,
+          supabase.auth.signInWithPassword({email:f.email.trim(),password:f.password}),
+          20000,
           'Connexion'
         );
         if(error){
@@ -507,37 +512,30 @@ function AuthModal({onAuth,onClose}){
           else setErr(error.message);
           return;
         }
-        const {data:profile}=await withTimeout(
-          supabase.from('profiles').select('*').eq('id',data.user.id).single(),
-          8000,
-          'Chargement du profil'
-        );
-        onAuth({...data.user,...(profile||{})});
+        // Profile fetch is non-blocking for the UI: the App-level
+        // onAuthStateChange listener will load it and close this modal.
+        onAuth(data.user);
       }else{
         if(!f.nom){setErr('Nom complet requis.');return;}
         if(f.password.length<6){setErr('Mot de passe : minimum 6 caractères.');return;}
         const {data,error}=await withTimeout(
           supabase.auth.signUp({
-            email:f.email,
+            email:f.email.trim(),
             password:f.password,
-            options:{data:{nom:f.nom,role},emailRedirectTo: SITE_URL}
+            options:{data:{nom:f.nom.trim(),role},emailRedirectTo: SITE_URL}
           }),
-          12000,
+          20000,
           'Inscription'
         );
         if(error){setErr(error.message);return;}
         if(!data.session){setInfo('Compte créé ! Vérifie ta boîte mail pour confirmer ton email (le lien te renvoie sur le site).');return;}
-        const {data:profile}=await withTimeout(
-          supabase.from('profiles').select('*').eq('id',data.user.id).single(),
-          8000,
-          'Chargement du profil'
-        );
-        onAuth({...data.user,...(profile||{})});
+        onAuth(data.user);
       }
     }catch(ex){
       const msg=ex?.message||'Erreur inconnue';
+      console.warn('[SERAO] auth error:',ex);
       if(/délai dépassé|timed? out|Failed to fetch|NetworkError|ERR_BLOCKED/i.test(msg)){
-        setErr('Connexion impossible. Vérifie ta connexion Internet ET désactive tes extensions Chrome (AdBlock, Brave Shields, etc.) qui peuvent bloquer Supabase. Astuce : essaie en navigation privée pour confirmer.');
+        setErr('Le serveur met trop de temps à répondre. Réessaie dans quelques secondes. Si ça persiste : vérifie ta connexion ou désactive AdBlock / Brave Shields.');
       } else {
         setErr(msg);
       }
@@ -1204,11 +1202,24 @@ function App(){
   const nav=p=>{setPage(p);setMenu(false);setUserMenu(false);window.scrollTo({top:0,behavior:'smooth'});};
   const showToast=(msg,type='ok')=>{setToast(msg);setToastType(type);setTimeout(()=>setToast(''),4000);};
 
-  // Helper: fetch the profile row for a given Supabase user
+  // Helper: fetch the profile row for a given Supabase user.
+  // - maybeSingle() : returns null instead of erroring when no row exists
+  // - withTimeout   : prevents the auth callback from hanging forever if the
+  //                   request silently stalls (extension, network, RLS loop).
   const fetchProfile=async(authUser)=>{
     if(!authUser)return null;
-    const{data}=await supabase.from('profiles').select('*').eq('id',authUser.id).single();
-    return data?{...authUser,...data}:authUser;
+    try{
+      const{data,error}=await withTimeout(
+        supabase.from('profiles').select('*').eq('id',authUser.id).maybeSingle(),
+        10000,
+        'Chargement du profil'
+      );
+      if(error)console.warn('[SERAO] profile fetch error:',error);
+      return data?{...authUser,...data}:authUser;
+    }catch(ex){
+      console.warn('[SERAO] profile fetch failed, using auth user only:',ex);
+      return authUser;
+    }
   };
 
   // Password reset flow: when the user lands with ?reset=1 (after clicking the reset email link)
@@ -1217,21 +1228,32 @@ function App(){
     return new URLSearchParams(window.location.search).has('reset');
   });
 
-  // Restore session on load + subscribe to auth changes
+  // Restore session on load + subscribe to auth changes.
+  // We only re-fetch the profile on real auth transitions (SIGNED_IN /
+  // SIGNED_OUT / USER_UPDATED). TOKEN_REFRESHED fires every ~hour and would
+  // otherwise trigger a useless re-render of the whole app.
   useEffect(()=>{
     let mounted=true;
-    supabase.auth.getSession().then(async({data:{session}})=>{
-      if(!mounted)return;
-      if(session?.user){
-        const u=await fetchProfile(session.user);
-        setUser(u);
-      }
-      setAuthLoading(false);
-    });
+    (async()=>{
+      try{
+        const{data:{session}}=await supabase.auth.getSession();
+        if(!mounted)return;
+        if(session?.user){
+          const u=await fetchProfile(session.user);
+          if(mounted)setUser(u);
+        }
+      }catch(ex){console.warn('[SERAO] getSession failed:',ex);}
+      finally{if(mounted)setAuthLoading(false);}
+    })();
     const{data:sub}=supabase.auth.onAuthStateChange(async(evt,session)=>{
-      if(session?.user){const u=await fetchProfile(session.user);setUser(u);}
-      else setUser(null);
-      if(evt==='PASSWORD_RECOVERY')setResetMode(true);
+      if(evt==='PASSWORD_RECOVERY'){setResetMode(true);return;}
+      if(evt==='SIGNED_OUT'){setUser(null);return;}
+      if(evt==='SIGNED_IN'||evt==='USER_UPDATED'){
+        if(!session?.user){setUser(null);return;}
+        const u=await fetchProfile(session.user);
+        if(mounted)setUser(u);
+      }
+      // TOKEN_REFRESHED, INITIAL_SESSION : ignore — handled by getSession above.
     });
     return()=>{mounted=false;sub.subscription.unsubscribe();};
   },[]);
@@ -1272,8 +1294,20 @@ function App(){
     return()=>{mounted=false;};
   },[user]);
 
-  const login=u=>{setUser(u);setShowAuth(false);showToast(`Bienvenue, ${u.nom||u.email} ! 👋`);};
-  const logout=async()=>{await supabase.auth.signOut();setUser(null);setShowChat(false);setUserMenu(false);showToast('Déconnecté');};
+  const login=async(authUser)=>{
+    // Hydrate with profile in the background so the toast can show the user's
+    // display name. The auth listener will also run this, but we want a snappy
+    // close + welcome here too.
+    const u=await fetchProfile(authUser);
+    setUser(u);
+    setShowAuth(false);
+    showToast(`Bienvenue, ${u?.nom||u?.email||''} ! 👋`);
+  };
+  const logout=async()=>{
+    try{await supabase.auth.signOut();}
+    catch(ex){console.warn('[SERAO] signOut error:',ex);}
+    setUser(null);setShowChat(false);setUserMenu(false);showToast('Déconnecté');
+  };
   const onBuy=p=>{if(user){setPayProduct(p);}else{setShowAuth(true);}};
 
   useEffect(()=>{
@@ -1300,7 +1334,7 @@ function App(){
   }
 
   return(<div className="app-root">
-    {showAuth&&<AuthModal onAuth={login} onClose={()=>setShowAuth(false)}/>}
+    {showAuth&&<AuthModal user={user} onAuth={login} onClose={()=>setShowAuth(false)}/>}
     {resetMode&&<ResetPasswordModal onClose={()=>{setResetMode(false);window.history.replaceState({},'',SITE_URL);}} showToast={showToast}/>}
     {payProduct&&<PaymentModal product={payProduct} user={user} onClose={()=>{setPayProduct(null);setCart(c=>c+1);}} showToast={showToast}/>}
     {adminOpen&&!isAdmin&&(
