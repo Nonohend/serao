@@ -1474,7 +1474,14 @@ function App(){
         'Chargement du profil'
       );
       if(error)console.warn('[SERAO] profile fetch error:',error);
-      return data?{...authUser,...data}:authUser;
+      // When no profile row exists yet (race with trigger), fall back to
+      // user_metadata so nom/role are always available immediately.
+      return data
+        ?{...authUser,...data}
+        :{...authUser,
+           nom:authUser.user_metadata?.nom||null,
+           role:authUser.user_metadata?.role||'acheteur'
+          };
     }catch(ex){
       console.warn('[SERAO] profile fetch failed, using auth user only:',ex);
       return authUser;
@@ -1510,9 +1517,10 @@ function App(){
       if(evt==='SIGNED_IN'||evt==='USER_UPDATED'){
         if(!session?.user){setUser(null);return;}
         const u=await fetchProfile(session.user);
-        if(mounted)setUser(u);
+        setUser(u); // App never unmounts — no mounted guard needed here
       }
-      // TOKEN_REFRESHED, INITIAL_SESSION : ignore — handled by getSession above.
+      // TOKEN_REFRESHED: ignore (fires ~hourly, no profile change).
+      // INITIAL_SESSION: handled by the getSession() IIFE above as belt-and-suspenders.
     });
     return()=>{mounted=false;sub.subscription.unsubscribe();};
   },[]);
@@ -1677,11 +1685,11 @@ function App(){
               :<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
           </button>
           {user?(<>
-            <button className="nav-iconbtn" onClick={()=>setShowChat(s=>!s)} title="Messages">
+            <button className="nav-iconbtn nav-iconbtn-auth" onClick={()=>setShowChat(s=>!s)} title="Messages">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               {unread>0&&<span className="notif-dot">{unread>9?'9+':unread}</span>}
             </button>
-            <button className="nav-iconbtn" onClick={()=>showToast(`🛒 Panier : ${cart} article(s)`)}>
+            <button className="nav-iconbtn nav-iconbtn-auth" onClick={()=>showToast(`🛒 Panier : ${cart} article(s)`)}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
               {cart>0&&<span className="cart-dot">{cart}</span>}
             </button>
@@ -1711,8 +1719,24 @@ function App(){
     </nav>
 
     <div className={'mob-menu'+(menu?' open':'')}>
+      {user&&(
+        <div className="mob-user-header">
+          <div className="u-av" style={{width:44,height:44,fontSize:'16px',flexShrink:0}}>{initials(user.nom||user.email||'?')}</div>
+          <div>
+            <div style={{fontWeight:700,fontSize:'16px',color:'var(--text)'}}>{user.nom||(user.email||'').split('@')[0]||'…'}</div>
+            <div style={{fontSize:'12px',color:'var(--emerald-glow)',textTransform:'capitalize',fontWeight:600}}>{user.role||'membre'}</div>
+          </div>
+        </div>
+      )}
       {LINKS.map(l=><div key={l.id} className={'mob-link'+(page===l.id?' on':'')} onClick={()=>nav(l.id)}>{l.l}</div>)}
-      {user?<div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowChat(true);setMenu(false);}}>💬 Messages{unread>0&&` (${unread})`}</div>:<div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowAuth(true);setMenu(false);}}>🔑 Se connecter</div>}
+      {user?(<>
+        <div className="mob-link" onClick={()=>{setShowChat(true);setMenu(false);}}>💬 Messages{unread>0&&` (${unread})`}</div>
+        <div className="mob-link" onClick={()=>{nav('commandes');setMenu(false);}}>📦 Mes commandes</div>
+        {user.role==='vendeur'&&<div className="mob-link" onClick={()=>{nav('vendeur');setMenu(false);}}>🏪 Ma boutique</div>}
+        <div className="mob-link" style={{color:'#fca5a5',borderBottom:'none'}} onClick={()=>{logout();setMenu(false);}}>🚪 Déconnexion</div>
+      </>):(
+        <div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowAuth(true);setMenu(false);}}>🔑 Se connecter</div>
+      )}
     </div>
 
     {page==='accueil'   &&<PageAccueil nav={nav} onBuy={onBuy} products={products} articles={articles} stats={stats}/>}
@@ -1736,7 +1760,7 @@ function App(){
         {[{id:'accueil',icon:'🏠',l:'Accueil'},{id:'catalogue',icon:'🛍️',l:'Catalogue'},{id:'livraison',icon:'📦',l:'Livraison'},{id:'chat',icon:'💬',l:'Chat'},{id:'profil',icon:'👤',l:'Profil'}].map(b=>(
           <div key={b.id} className={'bnav-item'+(page===b.id?' on':'')} onClick={()=>{
             if(b.id==='chat'){if(user)setShowChat(s=>!s);else setShowAuth(true);}
-            else if(b.id==='profil'){if(user)setUserMenu(true);else setShowAuth(true);}
+            else if(b.id==='profil'){if(user)setMenu(m=>!m);else setShowAuth(true);}
             else nav(b.id);
           }}>
             <div className="bnav-icon">{b.icon}</div>
