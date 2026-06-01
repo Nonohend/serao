@@ -866,7 +866,12 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
       <div className="wrap" style={{width:'100%'}}>
         <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
           <div className="hero-eye"><div className="hero-eye-dot"/><span>Marketplace Malagasy · Produits Authentiques</span></div>
-          <h1 className="hero-title">SERAO</h1>
+          <img
+            src="/serao/serao-logo.png"
+            alt="SERAO"
+            className="hero-logo-img"
+            draggable={false}
+          />
           <p className="hero-sub">La plus premium des marketplaces malagasy. Produits authentiques, livrés avec soin.</p>
           <div className="hero-ctas">
             <Btn onClick={()=>nav('catalogue')}>🛍️ Explorer le catalogue</Btn>

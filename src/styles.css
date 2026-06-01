@@ -336,6 +336,18 @@ option{background:#0d1f2d;}
 .hero-stat{text-align:center;}
 .hero-stat-val{font-family:var(--font-display);font-size:30px;font-weight:800;background:linear-gradient(135deg,var(--emerald-glow),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .hero-stat-lbl{font-size:13px;color:var(--muted);margin-top:4px;font-weight:500;}
+/* Hero logo image (replaces the text title on Accueil) */
+.hero-logo-img{
+  width:clamp(260px,42vw,520px);
+  height:auto;
+  /* Gentle drop-shadow to make the 3D logo pop off the background */
+  filter:drop-shadow(0 8px 32px rgba(20,123,99,0.30)) drop-shadow(0 2px 8px rgba(0,0,0,0.15));
+  margin-bottom:20px;
+  animation:titleReveal .9s ease both;
+  user-select:none;
+}
+@media(max-width:768px){.hero-logo-img{width:clamp(200px,72vw,340px);}}
+
 /* Scroll indicator */
 .scroll-ind{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--muted);font-size:12px;animation:fadeInUp 1s ease 1s both;}
 .scroll-line{width:1px;height:40px;background:linear-gradient(to bottom,transparent,var(--emerald),transparent);animation:scrollLine 2s ease-in-out infinite;}
