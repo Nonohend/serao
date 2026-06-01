@@ -751,3 +751,28 @@ option{background:#0d1f2d;}
   /* Mob menu links */
   .mob-link{font-size:17px;padding:13px 0;}
 }
+
+/* ═══ SCROLL-DRIVEN VIDEO BACKGROUND (Accueil only) ═══ */
+body.has-video-bg{background:transparent!important;}
+
+.accueil-video-bg{
+  position:fixed;inset:0;
+  width:100%;height:100%;
+  object-fit:cover;
+  z-index:-2;
+  pointer-events:none;
+}
+/* Adaptive overlay: in light mode, a soft mist; in dark mode, a deeper veil.
+   The gradient fades to fully opaque at the bottom so sections read cleanly. */
+.accueil-video-overlay{
+  position:fixed;inset:0;
+  pointer-events:none;
+  z-index:-1;
+  background:linear-gradient(
+    180deg,
+    rgba(var(--surface-rgb),.30) 0%,
+    rgba(var(--surface-rgb),.45) 40%,
+    rgba(var(--surface-rgb),.80) 75%,
+    rgba(var(--surface-rgb),.96) 100%
+  );
+}

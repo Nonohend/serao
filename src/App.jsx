@@ -819,6 +819,33 @@ function AdminPanel({onClose, refreshProducts, showToast}){
 
 /* ─ PAGES ─ */
 function PageAccueil({nav,onBuy,products,articles,stats}){
+  const videoRef=useRef(null);
+
+  // Make body transparent so the fixed video shows through
+  useEffect(()=>{
+    document.body.classList.add('has-video-bg');
+    return()=>document.body.classList.remove('has-video-bg');
+  },[]);
+
+  // Scroll-driven scrubbing: map scrollY → video.currentTime over the full page
+  useEffect(()=>{
+    const video=videoRef.current;
+    if(!video)return;
+    let raf;
+    const tick=()=>{
+      if(!video.duration)return;
+      const maxScroll=document.documentElement.scrollHeight-window.innerHeight;
+      if(maxScroll<=0)return;
+      video.currentTime=Math.min(1,Math.max(0,window.scrollY/maxScroll))*video.duration;
+    };
+    const onScroll=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(tick);};
+    window.addEventListener('scroll',onScroll,{passive:true});
+    // Set first frame once metadata is ready
+    video.addEventListener('loadedmetadata',tick,{once:true});
+    tick();
+    return()=>{window.removeEventListener('scroll',onScroll);cancelAnimationFrame(raf);};
+  },[]);
+
   const compact=n=>{n=Number(n)||0;if(n>=1000)return (n/1000).toFixed(n>=10000?0:1).replace('.0','')+'K';return String(n);};
   const heroStats=[
     {v:stats?compact(stats.vendeurs):'—',l:'Vendeurs actifs'},
@@ -827,6 +854,12 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
     {v:'48h',l:'Livraison max'},
   ];
   return(<>
+    {/* Scroll-driven video background — scrubs frame-by-frame as user scrolls */}
+    <video ref={videoRef} className="accueil-video-bg" aria-hidden="true"
+      src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/hero-bg.mp4.mp4"
+      muted playsInline preload="auto"/>
+    <div className="accueil-video-overlay" aria-hidden="true"/>
+
     <section className="hero">
       <div className="wrap" style={{width:'100%'}}>
         <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
