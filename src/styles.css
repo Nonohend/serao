@@ -195,7 +195,7 @@ body{
 .brand-logo-img{display:block;object-fit:contain;user-select:none;filter:drop-shadow(0 1px 4px rgba(20,123,99,0.18));}
 .nav-logo-img{height:144px;width:auto;}
 .footer-logo-img{height:208px;width:auto;}
-.auth-logo-img{height:176px;width:auto;margin:0 auto 4px;}
+.auth-logo-img{width:clamp(160px,60%,260px);height:auto;margin:0 auto 4px;}
 .navlinks{display:flex;gap:4px;flex:1;}
 .nl{
   font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;

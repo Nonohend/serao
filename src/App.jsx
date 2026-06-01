@@ -606,8 +606,7 @@ function AuthModal({onAuth,onClose,user}){
   return(<div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
     <div className="modal">
       <div style={{textAlign:'center',marginBottom:'24px'}}>
-        <div style={{fontSize:'40px',marginBottom:'8px'}}>🌿</div>
-        <img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Font%20SERAO.png" alt="SERAO" className="brand-logo-img auth-logo-img" />
+        <img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Logo%20SERAO%20.png" alt="SERAO" className="brand-logo-img auth-logo-img" />
         <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'4px'}}>Rejoignez la communauté malagasy</div>
       </div>
       <div className="auth-tabs">
