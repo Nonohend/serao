@@ -193,9 +193,9 @@ body{
 .nav-logo{cursor:pointer;user-select:none;display:flex;align-items:center;transition:opacity .2s;}
 .nav-logo:hover{opacity:.85;}
 .brand-logo-img{display:block;object-fit:contain;user-select:none;filter:drop-shadow(0 1px 4px rgba(20,123,99,0.18));}
-.nav-logo-img{height:26px;width:auto;}
-.footer-logo-img{height:36px;width:auto;}
-.auth-logo-img{height:32px;width:auto;margin:0 auto 4px;}
+.nav-logo-img{height:36px;width:auto;}
+.footer-logo-img{height:52px;width:auto;}
+.auth-logo-img{height:44px;width:auto;margin:0 auto 4px;}
 .navlinks{display:flex;gap:4px;flex:1;}
 .nl{
   font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;
