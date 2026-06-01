@@ -761,18 +761,27 @@ body.has-video-bg{background:transparent!important;}
   object-fit:cover;
   z-index:-2;
   pointer-events:none;
+  /* Blur the video into abstract color clouds — hides the logo,
+     keeps the motion colors. Scale up to hide blur edge bleed. */
+  filter:blur(10px) saturate(1.3) brightness(0.9);
+  transform:scale(1.12);
 }
-/* Adaptive overlay: in light mode, a soft mist; in dark mode, a deeper veil.
-   The gradient fades to fully opaque at the bottom so sections read cleanly. */
+/* Gradient veil — strong enough so content pops,
+   light enough so the colour shifts are still felt while scrolling. */
 .accueil-video-overlay{
   position:fixed;inset:0;
   pointer-events:none;
   z-index:-1;
   background:linear-gradient(
     180deg,
-    rgba(var(--surface-rgb),.30) 0%,
-    rgba(var(--surface-rgb),.45) 40%,
-    rgba(var(--surface-rgb),.80) 75%,
-    rgba(var(--surface-rgb),.96) 100%
+    rgba(var(--surface-rgb),.58) 0%,
+    rgba(var(--surface-rgb),.68) 40%,
+    rgba(var(--surface-rgb),.90) 72%,
+    rgba(var(--surface-rgb),.98) 100%
   );
+}
+/* Mobile: skip the video entirely — layout is cleaner and perf is better. */
+@media(max-width:768px){
+  .accueil-video-bg,.accueil-video-overlay{display:none!important;}
+  body.has-video-bg{background:var(--bg-void)!important;}
 }

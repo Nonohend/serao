@@ -831,6 +831,9 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
   useEffect(()=>{
     const video=videoRef.current;
     if(!video)return;
+    // Force the browser to download the whole file so scrubbing is frame-accurate.
+    // play() triggers aggressive buffering; we immediately pause to keep it silent.
+    video.play().then(()=>video.pause()).catch(()=>{});
     let raf;
     const tick=()=>{
       if(!video.duration)return;
@@ -840,7 +843,6 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
     };
     const onScroll=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(tick);};
     window.addEventListener('scroll',onScroll,{passive:true});
-    // Set first frame once metadata is ready
     video.addEventListener('loadedmetadata',tick,{once:true});
     tick();
     return()=>{window.removeEventListener('scroll',onScroll);cancelAnimationFrame(raf);};
