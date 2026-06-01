@@ -231,7 +231,7 @@ function TrackingMap(){
 }
 
 /* ─ KYC FLOW ─ */
-function KYCFlow({showToast}){
+function KYCFlow({showToast,onDone}){
   const[step,setStep]=useState(0);
   const[role,setRole]=useState('vendeur');
   const[f,setF]=useState({nom:'',email:'',tel:'',region:'',desc:'',cin:'',selfie:false,doc:false});
@@ -312,6 +312,7 @@ function KYCFlow({showToast}){
     <div style={{display:'flex',gap:'10px',justifyContent:'flex-end',marginTop:'28px',paddingTop:'20px',borderTop:'1px solid var(--glass-border)'}}>
       {step>0&&step<4&&<Btn v="glass" onClick={()=>setStep(s=>s-1)}>← Retour</Btn>}
       {step<4&&<Btn onClick={()=>{if(canNext())setStep(s=>s+1);else showToast('Remplissez les champs requis','err');}} disabled={!canNext()}>{step===3?'Soumettre →':'Continuer →'}</Btn>}
+      {step===4&&<Btn onClick={()=>onDone?.()}>Terminer →</Btn>}
     </div>
   </div>);
 }
@@ -326,6 +327,7 @@ function ChatWindow({user,onClose}){
   const[sending,setSending]=useState(false);
   const bottomRef=useRef();
   const inputRef=useRef();
+  const lastMsgAt=useRef(null);
 
   // Initial load: profiles + messages
   useEffect(()=>{
@@ -337,7 +339,9 @@ function ChatWindow({user,onClose}){
       ]);
       if(!mounted)return;
       setUsers(p.data||[]);
-      setMsgs(m.data||[]);
+      const initMsgs=m.data||[];
+      setMsgs(initMsgs);
+      if(initMsgs.length)lastMsgAt.current=initMsgs[initMsgs.length-1].created_at;
     })();
     return()=>{mounted=false;};
   },[]);
@@ -360,23 +364,30 @@ function ChatWindow({user,onClose}){
   },[]);
 
   // Fallback poll every 5s in case Realtime is silently dropped (extension blocking WebSocket, etc.)
+  // Only fetches messages newer than the last known message — avoids reloading all 500 rows. (BUG 4)
   useEffect(()=>{
     const id=setInterval(async()=>{
-      const{data}=await supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(500);
-      if(data)setMsgs(data);
+      let q=supabase.from('messages').select('*').order('created_at',{ascending:true});
+      if(lastMsgAt.current)q=q.gt('created_at',lastMsgAt.current);
+      const{data}=await q.limit(50);
+      if(data&&data.length>0){
+        lastMsgAt.current=data[data.length-1].created_at;
+        setMsgs(prev=>{const ids=new Set(prev.map(m=>m.id));return[...prev,...data.filter(m=>!ids.has(m.id))];});
+      }
     },5000);
     return()=>clearInterval(id);
   },[]);
 
   // Message actions
   const[menuFor,setMenuFor]=useState(null); // message id whose menu is open
+  const[confirmAction,setConfirmAction]=useState(null);
   const deleteMessage=async(m)=>{
     setMenuFor(null);
-    if(!window.confirm('Supprimer ce message ?'))return;
-    const{error}=await supabase.from('messages').delete().eq('id',m.id);
-    if(error){console.warn(error);return;}
-    // Optimistic remove (realtime will also remove it but this is instant)
-    setMsgs(prev=>prev.filter(x=>x.id!==m.id));
+    setConfirmAction({message:'Supprimer ce message ?',fn:async()=>{
+      const{error}=await supabase.from('messages').delete().eq('id',m.id);
+      if(error){console.warn(error);return;}
+      setMsgs(prev=>prev.filter(x=>x.id!==m.id));
+    }});
   };
   const copyMessage=async(m)=>{
     setMenuFor(null);
@@ -390,9 +401,12 @@ function ChatWindow({user,onClose}){
     if(active.type==='channel')return m.channel===active.id;
     return(m.from_user===user.id&&m.to_user===active.id)||(m.from_user===active.id&&m.to_user===user.id);
   });
+  // Unread count based on lastseen timestamp — read_by[] is never written server-side. (BUG 3)
+  const since=localStorage.getItem('serao_lastseen_'+user.id)||'1970-01-01T00:00:00Z';
   const unread=(target)=>msgs.filter(m=>{
-    if(target.type==='channel')return m.channel===target.id&&!(m.read_by||[]).includes(user.id);
-    return m.from_user===target.id&&m.to_user===user.id&&!(m.read_by||[]).includes(user.id);
+    if(m.from_user===user.id)return false;
+    const inTarget=target.type==='channel'?m.channel===target.id:(m.from_user===target.id&&m.to_user===user.id);
+    return inTarget&&m.created_at>since;
   }).length;
   const lastMsg=(id,type)=>{
     const ms=msgs.filter(m=>type==='channel'?m.channel===id:(m.from_user===id&&m.to_user===user.id)||(m.from_user===user.id&&m.to_user===id));
@@ -413,7 +427,10 @@ function ChatWindow({user,onClose}){
     setSending(false);
     inputRef.current?.focus();
   };
-  const selectConv=t=>{setActive(t);};
+  const selectConv=t=>{
+    setActive(t);
+    try{localStorage.setItem('serao_lastseen_'+user.id,new Date().toISOString());}catch{}
+  };
   const getUser=id=>users.find(u=>u.id===id)||{nom:'?',id};
   const channels=PUB_CHANNELS.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||!search);
   const dms=users.filter(u=>u.id!==user.id&&((u.nom||'').toLowerCase().includes(search.toLowerCase())||!search));
@@ -421,6 +438,18 @@ function ChatWindow({user,onClose}){
   threadMsgs.forEach(m=>{const ts=m.created_at||m.ts;const day=fmtD(ts);if(day!==lastDay){grouped.push({type:'sep',day});lastDay=day;}grouped.push({type:'msg',...m,_ts:ts,_from:m.from_user||m.from});});
 
   return(<div className="chat-win">
+    {confirmAction&&(
+      <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setConfirmAction(null);}}>
+        <div className="modal" style={{maxWidth:'400px'}}>
+          <div className="modal-title">⚠️ Confirmation</div>
+          <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'20px'}}>{confirmAction.message}</p>
+          <div className="modal-foot">
+            <Btn v="glass" onClick={()=>setConfirmAction(null)}>Annuler</Btn>
+            <Btn v="danger" onClick={async()=>{await confirmAction.fn();setConfirmAction(null);}}>Confirmer</Btn>
+          </div>
+        </div>
+      </div>
+    )}
     <div className="chat-side">
       <div className="chat-side-head">
         <div className="chat-side-title">💬 Messages</div>
@@ -651,64 +680,88 @@ function ResetPasswordModal({onClose, showToast}){
 }
 
 /* ─ ADMIN ─ */
-function AdminPanel({onClose, refreshProducts}){
+function AdminPanel({onClose, refreshProducts, showToast}){
   const[tab,setTab]=useState('dash');
   const[products,setProducts]=useState([]);
   const[orders,setOrders]=useState([]);
   const[users,setUsers]=useState([]);
   const[msgs,setMsgs]=useState([]);
+  const[adminArticles,setAdminArticles]=useState([]);
   const[loading,setLoading]=useState(true);
+  const[confirmAction,setConfirmAction]=useState(null);
 
   const loadAll=useCallback(async()=>{
     setLoading(true);
-    const[p,o,u,m]=await Promise.all([
+    const[p,o,u,m,a]=await Promise.all([
       supabase.from('products').select('*,category:categories(nom,slug,emoji)').order('created_at',{ascending:false}),
       supabase.from('orders').select('*').order('created_at',{ascending:false}),
       supabase.rpc('admin_list_users'), // full rows incl. email, gated by is_admin() (cf. S3)
       supabase.from('messages').select('*').order('created_at',{ascending:false}).limit(100),
+      supabase.from('articles').select('*').order('created_at',{ascending:false}),
     ]);
     setProducts(p.data||[]);
     setOrders(o.data||[]);
     setUsers(u.data||[]);
     setMsgs(m.data||[]);
+    setAdminArticles(a.data||[]);
     setLoading(false);
   },[]);
 
   useEffect(()=>{loadAll();},[loadAll]);
 
   const totalCA=orders.reduce((s,o)=>s+Number(o.montant||0),0);
-  const TABS=[{id:'dash',l:'Dashboard',i:'📊'},{id:'products',l:'Produits',i:'📦'},{id:'orders',l:'Commandes',i:'🚚'},{id:'users',l:'Membres',i:'👥'},{id:'messages',l:'Messages',i:'💬'}];
+  const TABS=[{id:'dash',l:'Dashboard',i:'📊'},{id:'products',l:'Produits',i:'📦'},{id:'orders',l:'Commandes',i:'🚚'},{id:'users',l:'Membres',i:'👥'},{id:'messages',l:'Messages',i:'💬'},{id:'articles',l:'Articles',i:'📝'}];
 
   const delProduct=async(p)=>{
-    if(!window.confirm(`Supprimer "${p.nom}" ?`))return;
-    const{error}=await supabase.from('products').delete().eq('id',p.id);
-    if(error){window.alert(error.message);return;}
-    loadAll();refreshProducts?.();
+    setConfirmAction({message:`Supprimer "${p.nom}" ?`,fn:async()=>{
+      const{error}=await supabase.from('products').delete().eq('id',p.id);
+      if(error){showToast?.(error.message,'err');return;}
+      loadAll();refreshProducts?.();
+    }});
   };
   const toggleActive=async(p)=>{
     const{error}=await supabase.from('products').update({active:!p.active}).eq('id',p.id);
-    if(error){window.alert(error.message);return;}
+    if(error){showToast?.(error.message,'err');return;}
     loadAll();refreshProducts?.();
   };
   const setOrderStatus=async(o,status)=>{
     const{error}=await supabase.from('orders').update({status}).eq('id',o.id);
-    if(error){window.alert(error.message);return;}
+    if(error){showToast?.(error.message,'err');return;}
     setOrders(orders.map(x=>x.id===o.id?{...x,status}:x));
   };
   const setUserRole=async(u,role)=>{
     const{error}=await supabase.rpc('admin_set_role',{p_user:u.id,p_role:role});
-    if(error){window.alert(error.message);return;}
+    if(error){showToast?.(error.message,'err');return;}
     setUsers(users.map(x=>x.id===u.id?{...x,role}:x));
   };
   const delMsg=async(m)=>{
-    if(!window.confirm('Supprimer ce message ?'))return;
-    const{error}=await supabase.from('messages').delete().eq('id',m.id);
-    if(error){window.alert(error.message);return;}
-    setMsgs(msgs.filter(x=>x.id!==m.id));
+    setConfirmAction({message:'Supprimer ce message ?',fn:async()=>{
+      const{error}=await supabase.from('messages').delete().eq('id',m.id);
+      if(error){showToast?.(error.message,'err');return;}
+      setMsgs(msgs.filter(x=>x.id!==m.id));
+    }});
+  };
+  const toggleArticle=async(article)=>{
+    const newPublie=!article.publie;
+    const{error}=await supabase.from('articles').update({publie:newPublie,publie_at:newPublie?new Date().toISOString():null}).eq('id',article.id);
+    if(error){showToast?.(error.message,'err');return;}
+    setAdminArticles(adminArticles.map(a=>a.id===article.id?{...a,publie:newPublie}:a));
   };
   const getUser=id=>users.find(u=>u.id===id);
 
   return(<div className="admin-panel">
+    {confirmAction&&(
+      <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setConfirmAction(null);}}>
+        <div className="modal" style={{maxWidth:'400px'}}>
+          <div className="modal-title">⚠️ Confirmation</div>
+          <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'20px'}}>{confirmAction.message}</p>
+          <div className="modal-foot">
+            <Btn v="glass" onClick={()=>setConfirmAction(null)}>Annuler</Btn>
+            <Btn v="danger" onClick={async()=>{await confirmAction.fn();setConfirmAction(null);}}>Confirmer</Btn>
+          </div>
+        </div>
+      </div>
+    )}
     <div className="admin-side">
       <div className="admin-logo">SERAO<span className="a-badge">ADMIN</span></div>
       <nav className="admin-nav">
@@ -754,12 +807,45 @@ function AdminPanel({onClose, refreshProducts}){
         <div className="a-sub">{msgs.length} messages récents</div>
         <div className="atable-wrap"><table className="atable"><thead><tr><th>De</th><th>Vers</th><th>Message</th><th>Heure</th><th>Action</th></tr></thead><tbody>{msgs.slice(0,30).map(m=>{const sender=getUser(m.from_user);const target=m.channel?{nom:'# '+m.channel}:getUser(m.to_user);return(<tr key={m.id}><td>{sender?.nom||sender?.email||'?'}</td><td style={{color:'var(--emerald-glow)'}}>{target?.nom||target?.email||'?'}</td><td style={{maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.content}</td><td style={{color:'var(--muted)'}}>{fmtT(m.created_at)}</td><td><Btn sm v="danger" onClick={()=>delMsg(m)}>🗑️</Btn></td></tr>);})}</tbody></table></div>
       </div>}
+
+      {!loading&&tab==='articles'&&<div>
+        <div className="a-title" style={{marginBottom:'4px'}}>Articles</div>
+        <div className="a-sub">{adminArticles.length} articles</div>
+        <div className="atable-wrap"><table className="atable"><thead><tr><th>Titre</th><th>Statut</th><th>Date</th><th>Action</th></tr></thead><tbody>{adminArticles.map(a=>(<tr key={a.id}><td style={{fontWeight:600}}>{a.titre}</td><td><span className={'s-pill '+(a.publie?'s-ok':'s-err')}>{a.publie?'Publié':'Brouillon'}</span></td><td style={{color:'var(--muted)'}}>{(a.publie_at||a.created_at)?.slice(0,10)||'—'}</td><td><Btn sm v="glass" onClick={()=>toggleArticle(a)}>{a.publie?'Dépublier':'Publier'}</Btn></td></tr>))}</tbody></table></div>
+      </div>}
     </div>
   </div>);
 }
 
 /* ─ PAGES ─ */
 function PageAccueil({nav,onBuy,products,articles,stats}){
+  const videoRef=useRef(null);
+
+  // Make body transparent so the fixed video shows through
+  useEffect(()=>{
+    document.body.classList.add('has-video-bg');
+    return()=>document.body.classList.remove('has-video-bg');
+  },[]);
+
+  // Scroll-driven scrubbing: map scrollY → video.currentTime over the full page
+  useEffect(()=>{
+    const video=videoRef.current;
+    if(!video)return;
+    let raf;
+    const tick=()=>{
+      if(!video.duration)return;
+      const maxScroll=document.documentElement.scrollHeight-window.innerHeight;
+      if(maxScroll<=0)return;
+      video.currentTime=Math.min(1,Math.max(0,window.scrollY/maxScroll))*video.duration;
+    };
+    const onScroll=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(tick);};
+    window.addEventListener('scroll',onScroll,{passive:true});
+    // Set first frame once metadata is ready
+    video.addEventListener('loadedmetadata',tick,{once:true});
+    tick();
+    return()=>{window.removeEventListener('scroll',onScroll);cancelAnimationFrame(raf);};
+  },[]);
+
   const compact=n=>{n=Number(n)||0;if(n>=1000)return (n/1000).toFixed(n>=10000?0:1).replace('.0','')+'K';return String(n);};
   const heroStats=[
     {v:stats?compact(stats.vendeurs):'—',l:'Vendeurs actifs'},
@@ -768,6 +854,12 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
     {v:'48h',l:'Livraison max'},
   ];
   return(<>
+    {/* Scroll-driven video background — scrubs frame-by-frame as user scrolls */}
+    <video ref={videoRef} className="accueil-video-bg" aria-hidden="true"
+      src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/hero-bg.mp4.mp4"
+      muted playsInline preload="auto"/>
+    <div className="accueil-video-overlay" aria-hidden="true"/>
+
     <section className="hero">
       <div className="wrap" style={{width:'100%'}}>
         <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
@@ -990,10 +1082,19 @@ function PageFAQ(){
   ]}/>;
 }
 
-function PageContact({showToast}){
+function PageContact({showToast,user}){
   const[f,setF]=useState({nom:'',email:'',msg:''});
   const set=(k,v)=>setF(ff=>({...ff,[k]:v}));
-  const submit=e=>{e.preventDefault();if(!f.nom||!f.email||!f.msg){showToast('Remplis tous les champs','err');return;}showToast('Message envoyé ✓ Nous te répondrons vite.');setF({nom:'',email:'',msg:''});};
+  const submit=async e=>{
+    e.preventDefault();
+    if(!f.nom||!f.email||!f.msg){showToast('Remplis tous les champs','err');return;}
+    if(user){
+      try{await supabase.from('messages').insert({from_user:user.id,channel:'contact',content:`[${f.nom} — ${f.email}] ${f.msg}`});}
+      catch(ex){console.warn('contact send failed',ex);}
+    }
+    showToast('Message envoyé ✓ Nous te répondrons vite.');
+    setF({nom:'',email:'',msg:''});
+  };
   return(<div>
     <div className="page-hero"><div className="wrap"><h1>Contact</h1><p>Une question, un partenariat, un souci ? Écris-nous.</p></div></div>
     <section className="section"><div className="wrap" style={{maxWidth:'600px'}}>
@@ -1032,6 +1133,34 @@ function PageConfidentialite(){
   ]}/>;
 }
 
+/* ─ COMMANDES ─ */
+function PageCommandes({orders}){
+  const STATUS_COLOR={confirme:'#60a5fa',preparation:'#fb923c',expedie:'#a78bfa',transit:'#22d3ee',livre:'#4ade80',annule:'#f87171'};
+  return(<div>
+    <div className="page-hero"><div className="wrap"><h1>Mes commandes</h1><p>{orders.length} commande{orders.length!==1?'s':''}</p></div></div>
+    <section className="section"><div className="wrap">
+      {orders.length===0&&<div className="glass" style={{padding:'48px',textAlign:'center'}}>
+        <div style={{fontSize:'48px',marginBottom:'12px'}}>📦</div>
+        <div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucune commande</div>
+        <div style={{color:'var(--muted)'}}>Vos achats apparaîtront ici.</div>
+      </div>}
+      {orders.length>0&&(
+        <div className="atable-wrap"><table className="atable"><thead><tr><th>Réf.</th><th>Produit</th><th>Montant</th><th>Paiement</th><th>Statut</th><th>Date</th></tr></thead>
+        <tbody>{orders.map(o=>{const c=STATUS_COLOR[o.status]||'var(--text)';return(
+          <tr key={o.id}>
+            <td><strong style={{color:'var(--cyan-light)'}}>{o.id}</strong></td>
+            <td>{o.produit}</td>
+            <td style={{fontWeight:700}}>{fmt(o.montant)}</td>
+            <td style={{color:'var(--muted)'}}>{o.pay_method||'—'}</td>
+            <td><span style={{padding:'3px 10px',borderRadius:'999px',fontSize:'12px',fontWeight:600,background:c+'22',color:c,border:`1px solid ${c}44`}}>{o.status}</span></td>
+            <td style={{color:'var(--muted)'}}>{o.date}</td>
+          </tr>
+        );})}</tbody></table></div>
+      )}
+    </div></section>
+  </div>);
+}
+
 /* ─ VENDOR DASHBOARD — list & manage own products ─ */
 function VendeurDashboard({user, showToast, refreshAll}){
   const blank={nom:'',description:'',category_id:'',region:'',prix:'',emoji:'🛍️',image_url:'',badge:'',deliv:'3-5 jours',stock:1};
@@ -1041,7 +1170,17 @@ function VendeurDashboard({user, showToast, refreshAll}){
   const[form,setForm]=useState(blank);
   const[photoFile,setPhotoFile]=useState(null);
   const[busy,setBusy]=useState(false);
+  const[preview,setPreview]=useState(null);
+  const[confirmAction,setConfirmAction]=useState(null);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  // Revoke previous object URL when photoFile changes to prevent memory leaks. (BUG 5)
+  useEffect(()=>{
+    if(!photoFile){setPreview(null);return;}
+    const url=URL.createObjectURL(photoFile);
+    setPreview(url);
+    return()=>URL.revokeObjectURL(url);
+  },[photoFile]);
 
   const load=useCallback(async()=>{
     const[p,c]=await Promise.all([
@@ -1108,14 +1247,27 @@ function VendeurDashboard({user, showToast, refreshAll}){
   };
 
   const del=async(p)=>{
-    if(!window.confirm(`Supprimer "${p.nom}" ?`))return;
-    const{error}=await supabase.from('products').delete().eq('id',p.id);
-    if(error){showToast(error.message,'err');return;}
-    showToast('Produit supprimé');
-    load();refreshAll?.();
+    setConfirmAction({message:`Supprimer "${p.nom}" ?`,fn:async()=>{
+      const{error}=await supabase.from('products').delete().eq('id',p.id);
+      if(error){showToast(error.message,'err');return;}
+      showToast('Produit supprimé');
+      load();refreshAll?.();
+    }});
   };
 
   return(<div>
+    {confirmAction&&(
+      <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setConfirmAction(null);}}>
+        <div className="modal" style={{maxWidth:'400px'}}>
+          <div className="modal-title">⚠️ Confirmation</div>
+          <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'20px'}}>{confirmAction.message}</p>
+          <div className="modal-foot">
+            <Btn v="glass" onClick={()=>setConfirmAction(null)}>Annuler</Btn>
+            <Btn v="danger" onClick={async()=>{await confirmAction.fn();setConfirmAction(null);}}>Confirmer</Btn>
+          </div>
+        </div>
+      </div>
+    )}
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px',flexWrap:'wrap',gap:'16px'}}>
       <div>
         <h2 className="sec-h" style={{marginBottom:'4px'}}>Ma boutique</h2>
@@ -1172,7 +1324,7 @@ function VendeurDashboard({user, showToast, refreshAll}){
             )}
             {(photoFile||form.image_url)&&(
               <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)'}}>
-                <img src={photoFile?URL.createObjectURL(photoFile):form.image_url} alt="aperçu" style={{width:80,height:80,objectFit:'cover',borderRadius:'var(--r-sm)',flexShrink:0}}/>
+                <img src={photoFile?preview:form.image_url} alt="aperçu" style={{width:80,height:80,objectFit:'cover',borderRadius:'var(--r-sm)',flexShrink:0}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:'14px',color:'var(--text)',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                     {photoFile?photoFile.name:'Image déjà publiée'}
@@ -1230,6 +1382,7 @@ function VendeurDashboard({user, showToast, refreshAll}){
 }
 
 function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
+  const[showKYC,setShowKYC]=useState(false);
   const becomeVendor=async()=>{
     if(!user){setShowAuth(true);return;}
     // Role change goes through a controlled SECURITY DEFINER function: the
@@ -1238,6 +1391,7 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
     const{error}=await supabase.rpc('request_vendor');
     if(error){showToast(error.message,'err');return;}
     showToast('Tu es maintenant vendeur 🎉');
+    setShowKYC(true);
     refreshUser?.();
   };
 
@@ -1250,7 +1404,9 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
     </div></div>
     <section className="section"><div className="wrap">
       {canSell?(
-        <VendeurDashboard user={user} showToast={showToast} refreshAll={refreshProducts}/>
+        showKYC
+          ?<KYCFlow showToast={showToast} onDone={()=>{setShowKYC(false);refreshUser?.();}}/>
+          :<VendeurDashboard user={user} showToast={showToast} refreshAll={refreshProducts}/>
       ):(
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'40px',alignItems:'start'}}>
           <div>
@@ -1320,7 +1476,7 @@ function App(){
   const userMenuRef=useRef(null);
 
   const[products,setProducts]=useState([]);
-  const[articles]=useState(()=>ls.get('articles',DEF_ARTICLES));
+  const[articles,setArticles]=useState(DEF_ARTICLES);
   const[orders,setOrders]=useState([]);
   const[stats,setStats]=useState(null);
   const[theme,setTheme]=useState(()=>{try{return localStorage.getItem('serao-theme')||'light';}catch{return 'light';}});
@@ -1351,7 +1507,14 @@ function App(){
         'Chargement du profil'
       );
       if(error)console.warn('[SERAO] profile fetch error:',error);
-      return data?{...authUser,...data}:authUser;
+      // When no profile row exists yet (race with trigger), fall back to
+      // user_metadata so nom/role are always available immediately.
+      return data
+        ?{...authUser,...data}
+        :{...authUser,
+           nom:authUser.user_metadata?.nom||null,
+           role:authUser.user_metadata?.role||'acheteur'
+          };
     }catch(ex){
       console.warn('[SERAO] profile fetch failed, using auth user only:',ex);
       return authUser;
@@ -1387,9 +1550,10 @@ function App(){
       if(evt==='SIGNED_IN'||evt==='USER_UPDATED'){
         if(!session?.user){setUser(null);return;}
         const u=await fetchProfile(session.user);
-        if(mounted)setUser(u);
+        setUser(u); // App never unmounts — no mounted guard needed here
       }
-      // TOKEN_REFRESHED, INITIAL_SESSION : ignore — handled by getSession above.
+      // TOKEN_REFRESHED: ignore (fires ~hourly, no profile change).
+      // INITIAL_SESSION: handled by the getSession() IIFE above as belt-and-suspenders.
     });
     return()=>{mounted=false;sub.subscription.unsubscribe();};
   },[]);
@@ -1405,6 +1569,17 @@ function App(){
     setProducts((data||[]).map(mapProductRow));
   },[]);
   useEffect(()=>{refreshProducts();},[refreshProducts]);
+
+  // Load published articles from Supabase; keep DEF_ARTICLES as fallback. (BUG 10)
+  useEffect(()=>{
+    let mounted=true;
+    (async()=>{
+      const{data,error}=await supabase.from('articles').select('*').eq('publie',true).order('publie_at',{ascending:false});
+      if(!mounted||error||!data?.length)return;
+      setArticles(data);
+    })();
+    return()=>{mounted=false;};
+  },[]);
 
   // Real platform stats for the homepage hero (counts only, no PII).
   useEffect(()=>{
@@ -1434,9 +1609,11 @@ function App(){
         .select('*')
         .order('created_at',{ascending:false});
       if(!mounted||error)return;
-      setOrders((data||[]).map(o=>({
-        id:o.id,produit:o.product_nom,client:o.acheteur_id===user.id?(user.nom||'Moi'):'',montant:Number(o.montant),status:o.status,date:o.created_at?.slice(0,10)
-      })));
+      const mapped=(data||[]).map(o=>({
+        id:o.id,produit:o.product_nom,client:o.acheteur_id===user.id?(user.nom||'Moi'):'',montant:Number(o.montant),pay_method:o.pay_method,status:o.status,date:o.created_at?.slice(0,10)
+      }));
+      setOrders(mapped);
+      setCart(mapped.filter(o=>o.status!=='annule').length); // BUG 9: initialize cart from real orders
     })();
     return()=>{mounted=false;};
   },[user]);
@@ -1504,9 +1681,10 @@ function App(){
 
   const isAdmin=user?.role==='admin';
 
+  if(authLoading)return<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',fontSize:'24px',color:'var(--emerald-glow)'}}>⏳ Chargement…</div>;
   if(adminOpen&&isAdmin){
     return(<>
-      <AdminPanel onClose={()=>setAdminOpen(false)} refreshProducts={refreshProducts}/>
+      <AdminPanel onClose={()=>setAdminOpen(false)} refreshProducts={refreshProducts} showToast={showToast}/>
       {toast&&<div className="toast"><span className={toastType==='ok'?'t-ok':'t-err'}>{toastType==='ok'?'✓':'✗'}</span>{toast}</div>}
     </>);
   }
@@ -1540,11 +1718,11 @@ function App(){
               :<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
           </button>
           {user?(<>
-            <button className="nav-iconbtn" onClick={()=>setShowChat(s=>!s)} title="Messages">
+            <button className="nav-iconbtn nav-iconbtn-auth" onClick={()=>setShowChat(s=>!s)} title="Messages">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               {unread>0&&<span className="notif-dot">{unread>9?'9+':unread}</span>}
             </button>
-            <button className="nav-iconbtn" onClick={()=>showToast(`🛒 Panier : ${cart} article(s)`)}>
+            <button className="nav-iconbtn nav-iconbtn-auth" onClick={()=>showToast(`🛒 Panier : ${cart} article(s)`)}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
               {cart>0&&<span className="cart-dot">{cart}</span>}
             </button>
@@ -1555,7 +1733,7 @@ function App(){
               </div>
               {userMenu&&<div className="user-dropdown">
                 <div className="u-drop-item" onClick={()=>{setShowChat(true);setUserMenu(false);}}>💬 Mes messages{unread>0&&` (${unread})`}</div>
-                <div className="u-drop-item" onClick={()=>{nav('livraison');setUserMenu(false);}}>📦 Mes commandes</div>
+                <div className="u-drop-item" onClick={()=>{nav('commandes');setUserMenu(false);}}>📦 Mes commandes</div>
                 {user.role==='vendeur'&&<div className="u-drop-item" onClick={()=>{nav('vendeur');setUserMenu(false);}}>🏪 Ma boutique</div>}
                 <div className="u-drop-sep"/>
                 <div className="u-drop-item danger" onClick={logout}>🚪 Déconnexion</div>
@@ -1574,8 +1752,24 @@ function App(){
     </nav>
 
     <div className={'mob-menu'+(menu?' open':'')}>
+      {user&&(
+        <div className="mob-user-header">
+          <div className="u-av" style={{width:44,height:44,fontSize:'16px',flexShrink:0}}>{initials(user.nom||user.email||'?')}</div>
+          <div>
+            <div style={{fontWeight:700,fontSize:'16px',color:'var(--text)'}}>{user.nom||(user.email||'').split('@')[0]||'…'}</div>
+            <div style={{fontSize:'12px',color:'var(--emerald-glow)',textTransform:'capitalize',fontWeight:600}}>{user.role||'membre'}</div>
+          </div>
+        </div>
+      )}
       {LINKS.map(l=><div key={l.id} className={'mob-link'+(page===l.id?' on':'')} onClick={()=>nav(l.id)}>{l.l}</div>)}
-      {user?<div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowChat(true);setMenu(false);}}>💬 Messages{unread>0&&` (${unread})`}</div>:<div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowAuth(true);setMenu(false);}}>🔑 Se connecter</div>}
+      {user?(<>
+        <div className="mob-link" onClick={()=>{setShowChat(true);setMenu(false);}}>💬 Messages{unread>0&&` (${unread})`}</div>
+        <div className="mob-link" onClick={()=>{nav('commandes');setMenu(false);}}>📦 Mes commandes</div>
+        {user.role==='vendeur'&&<div className="mob-link" onClick={()=>{nav('vendeur');setMenu(false);}}>🏪 Ma boutique</div>}
+        <div className="mob-link" style={{color:'#fca5a5',borderBottom:'none'}} onClick={()=>{logout();setMenu(false);}}>🚪 Déconnexion</div>
+      </>):(
+        <div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowAuth(true);setMenu(false);}}>🔑 Se connecter</div>
+      )}
     </div>
 
     {page==='accueil'   &&<PageAccueil nav={nav} onBuy={onBuy} products={products} articles={articles} stats={stats}/>}
@@ -1585,10 +1779,11 @@ function App(){
     {page==='live'      &&<PageLive/>}
     {page==='apropos'   &&<PageAPropos nav={nav}/>}
     {page==='faq'       &&<PageFAQ/>}
-    {page==='contact'   &&<PageContact showToast={showToast}/>}
+    {page==='contact'   &&<PageContact showToast={showToast} user={user}/>}
     {page==='cgu'       &&<PageCGU/>}
     {page==='confidentialite'&&<PageConfidentialite/>}
     {page==='vendeur'   &&<PageVendeur user={user} showToast={showToast} setShowAuth={setShowAuth} refreshUser={refreshUser} refreshProducts={refreshProducts}/>}
+    {page==='commandes' &&<PageCommandes orders={orders}/>}
 
     <Footer nav={nav}/>
 
@@ -1598,7 +1793,7 @@ function App(){
         {[{id:'accueil',icon:'🏠',l:'Accueil'},{id:'catalogue',icon:'🛍️',l:'Catalogue'},{id:'livraison',icon:'📦',l:'Livraison'},{id:'chat',icon:'💬',l:'Chat'},{id:'profil',icon:'👤',l:'Profil'}].map(b=>(
           <div key={b.id} className={'bnav-item'+(page===b.id?' on':'')} onClick={()=>{
             if(b.id==='chat'){if(user)setShowChat(s=>!s);else setShowAuth(true);}
-            else if(b.id==='profil'){if(user)setUserMenu(true);else setShowAuth(true);}
+            else if(b.id==='profil'){if(user)setMenu(m=>!m);else setShowAuth(true);}
             else nav(b.id);
           }}>
             <div className="bnav-icon">{b.icon}</div>
