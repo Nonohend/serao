@@ -867,7 +867,7 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
         <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
           <div className="hero-eye"><div className="hero-eye-dot"/><span>Marketplace Malagasy · Produits Authentiques</span></div>
           <img
-            src="/serao/serao-logo.png"
+            src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Logo%20SERAO%20.png"
             alt="SERAO"
             className="hero-logo-img"
             draggable={false}
