@@ -8,7 +8,7 @@
   font-style: normal;
   font-display: swap;
 }
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Unbounded:wght@500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Unbounded:wght@500;600;700;800;900&display=swap');
 
 /* ═══════════════════════════════════════════════════════════════
    THEME TOKENS — "GLASS MALAGASY"
@@ -48,7 +48,7 @@
   --sheen:rgba(255,255,255,0.65);
   --sheen-2:rgba(255,255,255,0.25);
   /* === Dégradés de titres (texte transparent) === */
-  --heading-grad:linear-gradient(135deg,#1A2E2A,#2C5446);
+  --heading-grad:linear-gradient(135deg,#053d28 0%,#1a7a55 22%,#06c47a 42%,#d4a843 55%,#06c47a 68%,#1a7a55 82%,#053d28 100%);
   --hero-grad:linear-gradient(135deg,#1F8A5B 0%,#147B63 60%,#0E5E4C 100%);
   --brand-grad:linear-gradient(135deg,#1F8A5B,#0BA98C);
   --on-emerald:#ffffff;     /* texte posé sur les boutons/badges verts */
@@ -56,7 +56,7 @@
   --blur-sm:8px; --blur-md:20px; --blur-lg:40px; --blur-xl:60px;
   /* === Typographie === */
   --font-brand:'Nunito','Unbounded','Syne',sans-serif; /* Wordmark SERAO + gros titres — arrondi comme le logo 3D de la vidéo */
-  --font-display:'The Coastal','Syne',sans-serif; /* Titres de section */
+  --font-display:'Playfair Display','Syne',sans-serif; /* Titres de section */
   --font-body:'DM Sans',sans-serif;            /* Corps de texte */
   /* === Rayons === */
   --r-sm:8px; --r-md:14px; --r-lg:20px; --r-xl:28px; --r-pill:999px;
@@ -94,7 +94,7 @@
   --glass-emerald-hi:rgba(20,123,99,0.3);
   --sheen:rgba(255,255,255,0.06);
   --sheen-2:rgba(255,255,255,0.02);
-  --heading-grad:linear-gradient(135deg,#F0F8FF,#B8E8FF);
+  --heading-grad:linear-gradient(135deg,#7fffd4 0%,#06d6b0 20%,#ffffff 38%,#f0e080 52%,#ffffff 66%,#06d6b0 82%,#7fffd4 100%);
   --hero-grad:linear-gradient(135deg,#ffffff 0%,#7FFFD4 30%,#1aff9c 60%,#B8E8FF 100%);
   --brand-grad:linear-gradient(135deg,#147B63,#06D6B0,#B8E8FF);
   --on-emerald:#00140d;
@@ -368,7 +368,7 @@ option{background:#0d1f2d;}
 /* ═══ SECTIONS ═══ */
 .section{padding:80px 0;}
 .sec-eye{display:block;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--emerald-glow);margin-bottom:10px;font-family:var(--font-body);}
-.sec-h{font-family:var(--font-display);font-size:clamp(28px,4vw,40px);font-weight:normal;letter-spacing:.01em;background:var(--heading-grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.sec-h{font-family:var(--font-display);font-size:clamp(28px,4vw,40px);font-weight:700;letter-spacing:.01em;font-style:italic;background:var(--heading-grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 2px 6px rgba(6,196,122,0.25));}
 .sec-top{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:32px;gap:16px;flex-wrap:wrap;}
 
 /* ═══ BANDEAU DE VALEURS ═══ */
@@ -451,7 +451,7 @@ option{background:#0d1f2d;}
 
 /* ═══ PAGE HERO ═══ */
 .page-hero{padding:calc(var(--nav-h) + 52px) 0 52px;border-bottom:1px solid var(--glass-border);}
-.page-hero h1{font-family:var(--font-display);font-size:clamp(36px,6vw,56px);font-weight:normal;letter-spacing:.01em;background:var(--heading-grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:12px;}
+.page-hero h1{font-family:var(--font-display);font-size:clamp(36px,6vw,56px);font-weight:700;font-style:italic;letter-spacing:.01em;background:var(--heading-grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:12px;filter:drop-shadow(0 2px 8px rgba(6,196,122,0.25));}
 .page-hero p{font-size:18px;color:var(--muted);line-height:1.6;}
 
 /* ═══ FILTERS ═══ */
