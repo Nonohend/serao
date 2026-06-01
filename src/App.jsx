@@ -607,7 +607,7 @@ function AuthModal({onAuth,onClose,user}){
     <div className="modal">
       <div style={{textAlign:'center',marginBottom:'24px'}}>
         <div style={{fontSize:'40px',marginBottom:'8px'}}>🌿</div>
-        <div style={{fontFamily:'var(--font-display)',fontSize:'24px',fontWeight:800,background:'linear-gradient(135deg,var(--emerald-glow),var(--cyan))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>SERAO</div>
+        <img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Font%20SERAO.png" alt="SERAO" className="brand-logo-img auth-logo-img" />
         <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'4px'}}>Rejoignez la communauté malagasy</div>
       </div>
       <div className="auth-tabs">
@@ -1447,7 +1447,7 @@ function Footer({nav}){
   return(<footer className="footer">
     <div className="wrap footer-in">
       <div>
-        <div className="footer-logo">SERAO</div>
+        <div className="footer-logo"><img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Font%20SERAO.png" alt="SERAO" className="brand-logo-img footer-logo-img" /></div>
         <p style={{color:'var(--muted)',fontSize:'14px',lineHeight:1.6,maxWidth:'260px'}}>La marketplace premium des produits authentiques de Madagascar.</p>
         <div style={{display:'flex',gap:'10px',marginTop:'16px'}}>
           {['📘','📸','🐦','▶️'].map((icon,i)=><div key={i} style={{width:36,height:36,borderRadius:'var(--r-md)',background:'var(--glass-2)',border:'1px solid var(--glass-border)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:'16px'}}>{icon}</div>)}
@@ -1716,7 +1716,7 @@ function App(){
 
     <nav className="nav">
       <div className="wrap nav-in">
-        <div className="nav-logo" onClick={handleLogo}>SERAO</div>
+        <div className="nav-logo" onClick={handleLogo}><img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Font%20SERAO.png" alt="SERAO" className="brand-logo-img nav-logo-img" /></div>
         <div className="navlinks">{LINKS.map(l=><div key={l.id} className={'nl'+(page===l.id?' on':'')} onClick={()=>nav(l.id)}>{l.l}</div>)}</div>
         <div className="nav-r">
           <button className="nav-iconbtn" onClick={toggleTheme} title={theme==='dark'?'Passer en clair':'Passer en sombre'} aria-label="Changer de thème">
