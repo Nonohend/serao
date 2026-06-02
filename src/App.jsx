@@ -1750,7 +1750,7 @@ function SupportBot({onClose, user}){
     <div className="bot-window">
       <div className="bot-header">
         <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-          <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,var(--emerald),var(--cyan))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',flexShrink:0}}>🤖</div>
+          <div style={{width:36,height:36,borderRadius:'50%',overflow:'hidden',flexShrink:0}}><img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Bot%20serao%20.png" alt="Bot" style={{width:'100%',height:'100%',objectFit:'cover'}}/></div>
           <div>
             <div style={{fontWeight:700,fontSize:'14px'}}>Assistant SERAO</div>
             <div style={{fontSize:'11px',color:'var(--emerald-glow)',display:'flex',alignItems:'center',gap:'4px'}}>
@@ -1765,13 +1765,13 @@ function SupportBot({onClose, user}){
       <div className="bot-messages">
         {msgs.map((m,i)=>(
           <div key={i} className={'bot-msg '+(m.role==='user'?'bot-msg-user':'bot-msg-bot')}>
-            {m.role==='model'&&<div className="bot-avatar">🤖</div>}
+            {m.role==='model'&&<div className="bot-avatar"><img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Bot%20serao%20.png" alt="Bot" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/></div>}
             <div className="bot-bubble">{m.text}</div>
           </div>
         ))}
         {loading&&(
           <div className="bot-msg bot-msg-bot">
-            <div className="bot-avatar">🤖</div>
+            <div className="bot-avatar"><img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Bot%20serao%20.png" alt="Bot" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/></div>
             <div className="bot-bubble bot-typing"><span/><span/><span/></div>
           </div>
         )}
@@ -2171,7 +2171,7 @@ function App(){
       </button>
     )}
     <button className="bot-fab" onClick={()=>setShowBot(s=>!s)} aria-label="Assistance IA" title="Assistance IA">
-      {showBot?'✕':'🤖'}
+      {showBot?'✕':<img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Bot%20serao%20.png" alt="Bot" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>}
     </button>
     {user&&showChat&&<ChatWindow user={user} onClose={()=>setShowChat(false)}/>}
     {showBot&&<SupportBot onClose={()=>setShowBot(false)} user={user}/>}
