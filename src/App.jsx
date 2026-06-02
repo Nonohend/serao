@@ -408,6 +408,11 @@ function ChatWindow({user,onClose}){
   const inputRef=useRef();
   const lastMsgAt=useRef(null);
 
+  useEffect(()=>{
+    document.body.style.overflow='hidden';
+    return()=>{document.body.style.overflow='';};
+  },[]);
+
   // Initial load: profiles + messages
   useEffect(()=>{
     let mounted=true;
@@ -1713,6 +1718,11 @@ function SupportBot({onClose, user}){
   const bottomRef=useRef();
   const inputRef=useRef();
 
+  useEffect(()=>{
+    document.body.style.overflow='hidden';
+    return()=>{document.body.style.overflow='';};
+  },[]);
+
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
 
   const send=async()=>{
@@ -1737,7 +1747,12 @@ function SupportBot({onClose, user}){
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
         {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}
       );
-      if(!res.ok) throw new Error('Erreur API ('+res.status+')');
+      if(!res.ok){
+        const errBody=await res.json().catch(()=>({}));
+        const msg=errBody?.error?.message||'Erreur '+res.status;
+        if(res.status===400||res.status===403||res.status===404) throw new Error('Clé API invalide — vérifie le secret VITE_GEMINI_API_KEY sur GitHub (doit commencer par AIzaSy...)');
+        throw new Error(msg);
+      }
       const data=await res.json();
       const reply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Désolé, je n\'ai pas pu répondre.';
       setMsgs(m=>[...m,{role:'model',text:reply}]);
