@@ -1671,6 +1671,131 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
   </div>);
 }
 
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const SERAO_CONTEXT = `Tu es l'assistant virtuel de SERAO, une marketplace premium de produits authentiques de Madagascar.
+Réponds toujours en français (ou en malagasy si le client écrit en malagasy). Sois concis, chaleureux et professionnel.
+
+INFORMATIONS CLÉS SUR SERAO :
+- SERAO est une marketplace qui met en relation vendeurs et acheteurs de produits malagasy authentiques
+- Commission : 3% uniquement sur les ventes réalisées. Inscription gratuite pour les vendeurs.
+- Produits disponibles : Vanille, Artisanat, Épices, Cosmétiques, Textiles, Bijoux
+- Paiements acceptés : MVola, Orange Money, Airtel Money
+- Livraison : 3 à 5 jours en moyenne partout à Madagascar
+- Support disponible 7j/7
+
+POUR DEVENIR VENDEUR :
+1. Créer un compte sur SERAO
+2. Activer le statut vendeur dans "Espace vendeur"
+3. Soumettre une vérification d'identité (CIN malagasy obligatoire)
+4. Attendre la validation de l'équipe SERAO (24-48h)
+5. Commencer à publier ses produits
+
+VÉRIFICATION D'IDENTITÉ (KYC) :
+- Obligatoire pour tous les vendeurs
+- Documents acceptés : CIN (Carte d'Identité Nationale), Passeport, Permis de conduire
+- Délai de validation : 24 à 48 heures
+- Les documents sont strictement confidentiels
+
+COMMANDES :
+- L'acheteur choisit un produit et paie via Mobile Money
+- Le vendeur reçoit la commande et prépare l'envoi
+- Suivi en temps réel disponible dans "Mes commandes"
+- En cas de problème : contacter le support SERAO
+
+Si tu ne connais pas la réponse, dis honnêtement que tu vas transmettre la question à l'équipe et encourage l'utilisateur à utiliser la page Contact.`;
+
+function SupportBot({onClose, user}){
+  const[msgs,setMsgs]=useState([
+    {role:'model',text:'Bonjour ! 👋 Je suis l\'assistant SERAO. Comment puis-je vous aider aujourd\'hui ?'}
+  ]);
+  const[input,setInput]=useState('');
+  const[loading,setLoading]=useState(false);
+  const bottomRef=useRef();
+  const inputRef=useRef();
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
+
+  const send=async()=>{
+    const text=input.trim();
+    if(!text||loading) return;
+    setInput('');
+    const userMsg={role:'user',text};
+    setMsgs(m=>[...m,userMsg]);
+    setLoading(true);
+    try{
+      if(!GEMINI_KEY) throw new Error('Clé API Gemini non configurée');
+      const history=msgs.filter(m=>m.role!=='model'||msgs.indexOf(m)>0).map(m=>({
+        role:m.role==='model'?'model':'user',
+        parts:[{text:m.text}]
+      }));
+      const body={
+        system_instruction:{parts:[{text:SERAO_CONTEXT}]},
+        contents:[...history,{role:'user',parts:[{text}]}],
+        generationConfig:{temperature:0.7,maxOutputTokens:400,topP:0.9},
+      };
+      const res=await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+        {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}
+      );
+      if(!res.ok) throw new Error('Erreur API ('+res.status+')');
+      const data=await res.json();
+      const reply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Désolé, je n\'ai pas pu répondre.';
+      setMsgs(m=>[...m,{role:'model',text:reply}]);
+    }catch(ex){
+      setMsgs(m=>[...m,{role:'model',text:'❌ '+ex.message+'\nVeuillez réessayer ou contacter le support.'}]);
+    }finally{setLoading(false);inputRef.current?.focus();}
+  };
+
+  return(
+    <div className="bot-window">
+      <div className="bot-header">
+        <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+          <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,var(--emerald),var(--cyan))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',flexShrink:0}}>🤖</div>
+          <div>
+            <div style={{fontWeight:700,fontSize:'14px'}}>Assistant SERAO</div>
+            <div style={{fontSize:'11px',color:'var(--emerald-glow)',display:'flex',alignItems:'center',gap:'4px'}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:'var(--emerald-glow)',display:'inline-block'}}/>
+              En ligne · IA Gemini
+            </div>
+          </div>
+        </div>
+        <button onClick={onClose} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:'20px',padding:'4px',lineHeight:1}}>✕</button>
+      </div>
+
+      <div className="bot-messages">
+        {msgs.map((m,i)=>(
+          <div key={i} className={'bot-msg '+(m.role==='user'?'bot-msg-user':'bot-msg-bot')}>
+            {m.role==='model'&&<div className="bot-avatar">🤖</div>}
+            <div className="bot-bubble">{m.text}</div>
+          </div>
+        ))}
+        {loading&&(
+          <div className="bot-msg bot-msg-bot">
+            <div className="bot-avatar">🤖</div>
+            <div className="bot-bubble bot-typing"><span/><span/><span/></div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      <div className="bot-quick">
+        {['Comment commander ?','Devenir vendeur','Vérification KYC','Livraison & délais'].map(q=>(
+          <button key={q} className="bot-chip" onClick={()=>{setInput(q);inputRef.current?.focus();}}>{q}</button>
+        ))}
+      </div>
+
+      <div className="bot-input-row">
+        <input ref={inputRef} className="fi" value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+          placeholder="Posez votre question…" style={{flex:1,height:'40px'}}/>
+        <Btn onClick={send} disabled={!input.trim()||loading} style={{height:'40px',padding:'0 16px',flexShrink:0}}>
+          {loading?'…':'→'}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 function Footer({nav}){
   return(<footer className="footer">
     <div className="wrap footer-in">
@@ -1702,6 +1827,7 @@ function App(){
   const[authLoading,setAuthLoading]=useState(true);
   const[showAuth,setShowAuth]=useState(false);
   const[showChat,setShowChat]=useState(false);
+  const[showBot,setShowBot]=useState(false);
   const[unread,setUnread]=useState(0);
   const[adminOpen,setAdminOpen]=useState(false);
   const[userMenu,setUserMenu]=useState(false);
@@ -2044,7 +2170,11 @@ function App(){
         {!showChat&&unread>0&&<div className="chat-unread" style={{position:'absolute',top:'-4px',right:'-4px',minWidth:'20px',height:'20px',padding:'0 5px',background:'#ef4444',borderRadius:'999px',fontSize:'13px',fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid var(--bg-void)',color:'#fff'}}>{unread>9?'9+':unread}</div>}
       </button>
     )}
+    <button className="bot-fab" onClick={()=>setShowBot(s=>!s)} aria-label="Assistance IA" title="Assistance IA">
+      {showBot?'✕':'🤖'}
+    </button>
     {user&&showChat&&<ChatWindow user={user} onClose={()=>setShowChat(false)}/>}
+    {showBot&&<SupportBot onClose={()=>setShowBot(false)} user={user}/>}
 
     {toast&&<div className="toast"><span className={toastType==='ok'?'t-ok':'t-err'}>{toastType==='ok'?'✓':'✗'}</span>{toast}</div>}
   </div>);
