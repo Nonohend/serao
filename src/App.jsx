@@ -231,90 +231,169 @@ function TrackingMap(){
 }
 
 /* ─ KYC FLOW ─ */
-function KYCFlow({showToast,onDone}){
-  const[step,setStep]=useState(0);
-  const[role,setRole]=useState('vendeur');
-  const[f,setF]=useState({nom:'',email:'',tel:'',region:'',desc:'',cin:'',selfie:false,doc:false});
-  const set=(k,v)=>setF(ff=>({...ff,[k]:v}));
-  const steps=['Rôle','Identité','Documents','Boutique','Confirmation'];
+function KycPhotoInput({label,file,preview,id,onChange,hint}){
+  return(
+    <div className="fg">
+      <label className="fl">{label}</label>
+      {hint&&<div style={{fontSize:'12px',color:'var(--muted)',marginBottom:'8px'}}>{hint}</div>}
+      {!preview?(
+        <label htmlFor={'kyc-'+id} style={{display:'block',padding:'24px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',textAlign:'center',cursor:'pointer',background:'var(--glass-1)',transition:'all .2s'}}>
+          <div style={{fontSize:'32px',marginBottom:'6px'}}>📷</div>
+          <div style={{fontSize:'14px',color:'var(--text)',fontWeight:500}}>Appuyer pour choisir / prendre la photo</div>
+          <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'4px'}}>JPG, PNG — 10 Mo max</div>
+        </label>
+      ):(
+        <div style={{position:'relative',borderRadius:'var(--r-md)',overflow:'hidden',border:'2px solid var(--emerald-glow)'}}>
+          <img src={preview} alt={label} style={{width:'100%',maxHeight:'220px',objectFit:'cover',display:'block'}}/>
+          <div style={{position:'absolute',top:8,right:8,display:'flex',gap:'6px'}}>
+            <label htmlFor={'kyc-'+id} style={{padding:'6px 12px',background:'rgba(0,0,0,0.65)',color:'#fff',borderRadius:'var(--r-pill)',fontSize:'12px',fontWeight:600,cursor:'pointer',backdropFilter:'blur(8px)'}}>Changer</label>
+            <button type="button" onClick={()=>onChange(null)} style={{padding:'6px 10px',background:'rgba(220,38,38,0.75)',color:'#fff',border:'none',borderRadius:'var(--r-pill)',fontSize:'12px',cursor:'pointer'}}>✕</button>
+          </div>
+          <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'8px 12px',background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',gap:'8px'}}>
+            <span style={{color:'var(--emerald-glow)',fontSize:'16px'}}>✓</span>
+            <span style={{color:'#fff',fontSize:'13px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{file?.name}</span>
+          </div>
+        </div>
+      )}
+      <input id={'kyc-'+id} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>onChange(e.target.files?.[0]||null)}/>
+    </div>
+  );
+}
 
-  const canNext=()=>{
-    if(step===0) return role;
-    if(step===1) return f.nom&&f.email&&f.tel;
-    if(step===2) return f.doc;
-    if(step===3) return f.desc;
-    return true;
+function KYCFlow({user,showToast,onDone}){
+  const[step,setStep]=useState(0);
+  const[busy,setBusy]=useState(false);
+  const[form,setForm]=useState({doc_type:'CIN',nin:'',nom_complet:'',date_naissance:''});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const[rectoFile,setRectoFile]=useState(null);
+  const[versoFile,setVersoFile]=useState(null);
+  const[selfieFile,setSelfieFile]=useState(null);
+  const[rectoPreview,setRectoPreview]=useState(null);
+  const[versoPreview,setVersoPreview]=useState(null);
+  const[selfiePreview,setSelfiePreview]=useState(null);
+
+  useEffect(()=>{if(!rectoFile){setRectoPreview(null);return;}const u=URL.createObjectURL(rectoFile);setRectoPreview(u);return()=>URL.revokeObjectURL(u);},[rectoFile]);
+  useEffect(()=>{if(!versoFile){setVersoPreview(null);return;}const u=URL.createObjectURL(versoFile);setVersoPreview(u);return()=>URL.revokeObjectURL(u);},[versoFile]);
+  useEffect(()=>{if(!selfieFile){setSelfiePreview(null);return;}const u=URL.createObjectURL(selfieFile);setSelfiePreview(u);return()=>URL.revokeObjectURL(u);},[selfieFile]);
+
+  const uploadDoc=async(file,type)=>{
+    if(file.size>10*1024*1024) throw new Error(`${type} trop lourd (max 10 Mo)`);
+    const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+    const path=`${user.id}/${Date.now()}-${type}.${ext}`;
+    const{error}=await withTimeout(
+      supabase.storage.from('kyc-documents').upload(path,file,{contentType:file.type,upsert:false}),
+      30000,'Upload '+type
+    );
+    if(error) throw new Error('Upload '+type+' échoué : '+error.message);
+    return path;
   };
 
-  return(<div className="glass" style={{padding:'36px',maxWidth:'600px',margin:'0 auto'}}>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
-      <div style={{fontSize:'13px',fontWeight:600,color:'var(--muted)'}}>Étape {step+1} sur {steps.length} — {steps[step]}</div>
-      <div style={{fontSize:'12px',color:'var(--emerald-glow)'}}>{Math.round((step/steps.length)*100)}%</div>
-    </div>
-    <div className="kyc-step-bar">{steps.map((s,i)=><div key={i} className={'kyc-step'+(i<step?' done':i===step?' current':'')}/>)}</div>
+  const needVerso=form.doc_type==='CIN';
+  const canStep0=form.nin.trim().length>=6&&form.nom_complet.trim().length>=3&&form.date_naissance;
+  const canStep1=rectoFile&&selfieFile&&(!needVerso||versoFile);
 
-    {step===0&&(<div>
-      <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'8px',background:'linear-gradient(135deg,var(--white),var(--glacier))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Bienvenue sur SERAO</div>
-      <div style={{color:'var(--muted)',fontSize:'14px',marginBottom:'24px'}}>Choisissez votre profil pour commencer</div>
-      <div className="kyc-role-grid">
-        {[{id:'acheteur',icon:'🛍️',name:'Acheteur',desc:'Je découvre et achète des produits malagasy authentiques'},{id:'vendeur',icon:'🏪',name:'Vendeur',desc:'Je vends mes créations et produits sur SERAO'}].map(r=>(
-          <div key={r.id} className={'kyc-role'+(role===r.id?' on':'')} onClick={()=>setRole(r.id)}>
-            <div className="kyc-role-icon">{r.icon}</div>
-            <div style={{fontWeight:700,marginBottom:'4px'}}>{r.name}</div>
-            <div style={{fontSize:'12px',color:'var(--muted)'}}>{r.desc}</div>
+  const submit=async()=>{
+    setBusy(true);
+    try{
+      const rectoPath=await uploadDoc(rectoFile,'recto');
+      const versoPath=needVerso?await uploadDoc(versoFile,'verso'):null;
+      const selfiePath=await uploadDoc(selfieFile,'selfie');
+      const{error}=await withTimeout(
+        supabase.rpc('submit_kyc',{
+          p_doc_type:form.doc_type,
+          p_nin:form.nin.trim(),
+          p_nom_complet:form.nom_complet.trim(),
+          p_date_naissance:form.date_naissance,
+          p_cin_recto_path:rectoPath,
+          p_cin_verso_path:versoPath,
+          p_selfie_path:selfiePath,
+        }),
+        15000,'Soumission KYC'
+      );
+      if(error) throw new Error(error.message);
+      setStep(2);
+    }catch(ex){showToast(ex.message||'Erreur lors de l\'envoi','err');}
+    finally{setBusy(false);}
+  };
+
+  const STEPS=['Informations','Documents','Confirmation'];
+  return(
+    <div className="glass" style={{padding:'36px',maxWidth:'600px',margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+        <div style={{fontSize:'13px',fontWeight:600,color:'var(--muted)'}}>Étape {Math.min(step+1,3)}/{STEPS.length} — {STEPS[Math.min(step,2)]}</div>
+        <div style={{fontSize:'12px',color:'var(--emerald-glow)'}}>{step>=2?'100':step===1?'66':'33'}%</div>
+      </div>
+      <div className="kyc-step-bar">{STEPS.map((_,i)=><div key={i} className={'kyc-step'+(i<step?' done':i===step?' current':'')}/>)}</div>
+
+      {step===0&&(
+        <div>
+          <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'8px',background:'var(--heading-grad)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Vérification d'identité</div>
+          <div style={{color:'var(--muted)',fontSize:'14px',marginBottom:'24px',lineHeight:1.6}}>
+            Ces informations sont <strong style={{color:'var(--text)'}}>strictement confidentielles</strong> et accessibles uniquement à l'équipe SERAO pour valider votre identité.
           </div>
-        ))}
-      </div>
-    </div>)}
+          <div className="fg">
+            <label className="fl">Type de document *</label>
+            <select className="fi" value={form.doc_type} onChange={e=>set('doc_type',e.target.value)}>
+              <option value="CIN">Carte d'Identité Nationale (CIN)</option>
+              <option value="Passeport">Passeport malagasy</option>
+              <option value="Permis">Permis de conduire</option>
+            </select>
+          </div>
+          <div className="fg">
+            <label className="fl">Numéro {form.doc_type==='CIN'?'NIN (Numéro d\'Identité Nationale)':'du document'} *</label>
+            <input className="fi" value={form.nin} onChange={e=>set('nin',e.target.value.replace(/[^0-9A-Za-z\- ]/g,''))} placeholder={form.doc_type==='CIN'?'Ex : 101 234 567 890':'Numéro figurant sur le document'}/>
+            {form.doc_type==='CIN'&&<div style={{fontSize:'12px',color:'var(--muted)',marginTop:'4px'}}>Le NIN se trouve sous la photo au recto de votre CIN malagasy</div>}
+          </div>
+          <div className="fg">
+            <label className="fl">Nom complet (tel qu'il figure sur le document) *</label>
+            <input className="fi" value={form.nom_complet} onChange={e=>set('nom_complet',e.target.value)} placeholder="RAKOTO Jean Marie"/>
+          </div>
+          <div className="fg">
+            <label className="fl">Date de naissance *</label>
+            <input className="fi" type="date" value={form.date_naissance} onChange={e=>set('date_naissance',e.target.value)} max={new Date().toISOString().slice(0,10)}/>
+          </div>
+        </div>
+      )}
 
-    {step===1&&(<div>
-      <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'20px',background:'linear-gradient(135deg,var(--white),var(--glacier))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Vos informations</div>
-      <div className="fg"><label className="fl">Nom complet *</label><input className="fi" value={f.nom} onChange={e=>set('nom',e.target.value)} placeholder="Votre nom ou nom d'entreprise"/></div>
-      <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" value={f.email} onChange={e=>set('email',e.target.value)} placeholder="votre@email.com"/></div>
-      <div className="fg"><label className="fl">Téléphone *</label><input className="fi" value={f.tel} onChange={e=>set('tel',e.target.value)} placeholder="+261 34 00 000 00"/></div>
-      <div className="fg"><label className="fl">Région</label><select className="fi" value={f.region} onChange={e=>set('region',e.target.value)}><option value="">Choisir...</option>{['Antananarivo','SAVA','Toamasina','Fianarantsoa','Mahajanga','Nosy Be','Ilakaka'].map(r=><option key={r}>{r}</option>)}</select></div>
-    </div>)}
+      {step===1&&(
+        <div>
+          <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'8px',background:'var(--heading-grad)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Photos des documents</div>
+          <div style={{padding:'14px',background:'var(--glass-emerald)',border:'1px solid rgba(20,123,99,0.3)',borderRadius:'var(--r-md)',fontSize:'13px',marginBottom:'20px',lineHeight:1.7,color:'var(--muted)'}}>
+            📸 <strong style={{color:'var(--text)'}}>Conseils :</strong> Bonne lumière, document à plat, entier et lisible. Évitez les reflets sur la plastification.
+          </div>
+          <KycPhotoInput label={`${form.doc_type} — Recto *`} file={rectoFile} preview={rectoPreview} id="recto" onChange={setRectoFile} hint="Face avant du document, bien cadrée et lisible"/>
+          {needVerso&&<KycPhotoInput label="CIN — Verso *" file={versoFile} preview={versoPreview} id="verso" onChange={setVersoFile} hint="Face arrière de la CIN"/>}
+          <KycPhotoInput label="Selfie tenant votre document *" file={selfieFile} preview={selfiePreview} id="selfie" onChange={setSelfieFile} hint="Tenez le document face visible à côté de votre visage — les deux doivent être nets"/>
+        </div>
+      )}
 
-    {step===2&&(<div>
-      <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'8px',background:'linear-gradient(135deg,var(--white),var(--glacier))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Vérification d'identité</div>
-      <div style={{color:'var(--muted)',fontSize:'14px',marginBottom:'24px'}}>Requis pour la sécurité de la communauté SERAO</div>
-      <div className="kyc-scan-anim" onClick={()=>set('doc',true)}>
-        <div className="kyc-scan-line"/>
-        {f.doc?'✅':'🪪'}
-      </div>
-      <div style={{textAlign:'center',marginBottom:'20px'}}>
-        {f.doc?<div style={{color:'var(--emerald-glow)',fontWeight:600}}>✓ Document vérifié avec succès</div>:<div style={{color:'var(--muted)',fontSize:'13px'}}>Cliquez pour simuler l'upload de votre CIN/Passeport</div>}
-      </div>
-      <div className="kyc-upload-zone" onClick={()=>set('selfie',true)}>
-        <div style={{fontSize:'40px',marginBottom:'10px'}}>{f.selfie?'✅':'🤳'}</div>
-        <div style={{fontWeight:600,marginBottom:'4px'}}>{f.selfie?'Selfie vérifié !':'Prendre un selfie'}</div>
-        <div style={{fontSize:'13px',color:'var(--muted)'}}>Vérification biométrique · Face API</div>
-      </div>
-    </div>)}
+      {step===2&&(
+        <div style={{textAlign:'center',padding:'20px 0'}}>
+          <div style={{fontSize:'64px',marginBottom:'16px'}}>✅</div>
+          <div style={{fontFamily:'var(--font-display)',fontSize:'24px',fontWeight:700,marginBottom:'12px',background:'var(--heading-grad)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Demande envoyée !</div>
+          <div style={{color:'var(--muted)',fontSize:'15px',lineHeight:1.7,marginBottom:'24px'}}>
+            Votre dossier est en cours d'examen par notre équipe.<br/>
+            <strong style={{color:'var(--text)'}}>Délai : 24 à 48 heures.</strong><br/>
+            Vous pourrez publier des produits dès validation.
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',fontSize:'13px',marginBottom:'24px',textAlign:'left'}}>
+            {['🔒 Documents sécurisés & chiffrés','⏳ Examen en cours par notre équipe','🔔 Notification par email à la décision','✅ Accès complet après validation'].map((s,i)=>(
+              <div key={i} style={{padding:'12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)'}}>{s}</div>
+            ))}
+          </div>
+          <Btn onClick={()=>onDone?.()}>Retour à mon espace →</Btn>
+        </div>
+      )}
 
-    {step===3&&(<div>
-      <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'20px',background:'linear-gradient(135deg,var(--white),var(--glacier))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Votre boutique</div>
-      <div className="fg"><label className="fl">Description de vos produits *</label><textarea className="fi" rows="4" value={f.desc} onChange={e=>set('desc',e.target.value)} placeholder="Décrivez vos produits, leur origine, leur fabrication..."/></div>
-      <div style={{padding:'16px',background:'var(--glass-emerald)',border:'1px solid rgba(20,123,99,0.3)',borderRadius:'var(--r-lg)',fontSize:'13px',color:'var(--muted)'}}>
-        💰 <strong style={{color:'var(--emerald-glow)'}}>Inscription gratuite</strong> — Commission uniquement sur les ventes réalisées (3%)
-      </div>
-    </div>)}
-
-    {step===4&&(<div style={{textAlign:'center',padding:'20px 0'}}>
-      <div style={{fontSize:'64px',marginBottom:'16px',animation:'successPop .5s cubic-bezier(.23,1,.32,1)'}}>🎉</div>
-      <div style={{fontFamily:'var(--font-display)',fontSize:'26px',fontWeight:800,background:'linear-gradient(135deg,var(--emerald-glow),var(--cyan))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',marginBottom:'10px'}}>Bienvenue sur SERAO !</div>
-      <div style={{color:'var(--muted)',fontSize:'15px',lineHeight:1.6,marginBottom:'24px'}}>Votre compte <strong style={{color:'var(--text)'}}>{f.nom||'vendeur'}</strong> est en cours de vérification.<br/>Vous recevrez une confirmation sous 24h.</div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'10px',fontSize:'13px'}}>
-        {['✅ Documents vérifiés','📧 Email envoyé','⏳ Validation admin'].map((s,i)=><div key={i} style={{padding:'12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)'}}>{s}</div>)}
-      </div>
-    </div>)}
-
-    <div style={{display:'flex',gap:'10px',justifyContent:'flex-end',marginTop:'28px',paddingTop:'20px',borderTop:'1px solid var(--glass-border)'}}>
-      {step>0&&step<4&&<Btn v="glass" onClick={()=>setStep(s=>s-1)}>← Retour</Btn>}
-      {step<4&&<Btn onClick={()=>{if(canNext())setStep(s=>s+1);else showToast('Remplissez les champs requis','err');}} disabled={!canNext()}>{step===3?'Soumettre →':'Continuer →'}</Btn>}
-      {step===4&&<Btn onClick={()=>onDone?.()}>Terminer →</Btn>}
+      {step<2&&(
+        <div style={{display:'flex',gap:'10px',justifyContent:'flex-end',marginTop:'28px',paddingTop:'20px',borderTop:'1px solid var(--glass-border)'}}>
+          {step>0&&<Btn v="glass" onClick={()=>setStep(s=>s-1)} disabled={busy}>← Retour</Btn>}
+          {step===0&&<Btn onClick={()=>{if(canStep0)setStep(1);else showToast('Remplissez tous les champs obligatoires','err');}} disabled={!canStep0}>Suivant →</Btn>}
+          {step===1&&<Btn onClick={submit} disabled={!canStep1||busy}>{busy?'Envoi en cours…':'Soumettre mon dossier →'}</Btn>}
+        </div>
+      )}
     </div>
-  </div>);
+  );
 }
 
 /* ─ CHAT WINDOW ─ */
@@ -686,30 +765,65 @@ function AdminPanel({onClose, refreshProducts, showToast}){
   const[users,setUsers]=useState([]);
   const[msgs,setMsgs]=useState([]);
   const[adminArticles,setAdminArticles]=useState([]);
+  const[kycList,setKycList]=useState([]);
+  const[kycSelected,setKycSelected]=useState(null);
+  const[kycSignedUrls,setKycSignedUrls]=useState({});
+  const[kycRejectMotif,setKycRejectMotif]=useState('');
+  const[kycBusy,setKycBusy]=useState(false);
   const[loading,setLoading]=useState(true);
   const[confirmAction,setConfirmAction]=useState(null);
 
   const loadAll=useCallback(async()=>{
     setLoading(true);
-    const[p,o,u,m,a]=await Promise.all([
+    const[p,o,u,m,a,k]=await Promise.all([
       supabase.from('products').select('*,category:categories(nom,slug,emoji)').order('created_at',{ascending:false}),
       supabase.from('orders').select('*').order('created_at',{ascending:false}),
-      supabase.rpc('admin_list_users'), // full rows incl. email, gated by is_admin() (cf. S3)
+      supabase.rpc('admin_list_users'),
       supabase.from('messages').select('*').order('created_at',{ascending:false}).limit(100),
       supabase.from('articles').select('*').order('created_at',{ascending:false}),
+      supabase.rpc('admin_list_kyc'),
     ]);
     setProducts(p.data||[]);
     setOrders(o.data||[]);
     setUsers(u.data||[]);
     setMsgs(m.data||[]);
     setAdminArticles(a.data||[]);
+    setKycList(k.data||[]);
     setLoading(false);
   },[]);
+
+  const openKycReview=async(kyc)=>{
+    setKycSelected(kyc);setKycRejectMotif('');setKycSignedUrls({});
+    const paths={recto:kyc.cin_recto_path,verso:kyc.cin_verso_path,selfie:kyc.selfie_path};
+    const urls={};
+    await Promise.all(Object.entries(paths).map(async([k,p])=>{
+      if(!p)return;
+      const{data}=await supabase.storage.from('kyc-documents').createSignedUrl(p,3600);
+      if(data?.signedUrl) urls[k]=data.signedUrl;
+    }));
+    setKycSignedUrls(urls);
+  };
+
+  const reviewKyc=async(statut)=>{
+    if(statut==='rejete'&&!kycRejectMotif.trim()){showToast?.('Indiquez le motif du rejet','err');return;}
+    setKycBusy(true);
+    const{error}=await supabase.rpc('admin_review_kyc',{
+      p_kyc_id:kycSelected.id,
+      p_statut:statut,
+      p_motif:statut==='rejete'?kycRejectMotif.trim():null,
+    });
+    setKycBusy(false);
+    if(error){showToast?.(error.message,'err');return;}
+    showToast?.(statut==='approuve'?'✅ Dossier approuvé !':'❌ Dossier rejeté');
+    setKycSelected(null);
+    loadAll();
+  };
 
   useEffect(()=>{loadAll();},[loadAll]);
 
   const totalCA=orders.reduce((s,o)=>s+Number(o.montant||0),0);
-  const TABS=[{id:'dash',l:'Dashboard',i:'📊'},{id:'products',l:'Produits',i:'📦'},{id:'orders',l:'Commandes',i:'🚚'},{id:'users',l:'Membres',i:'👥'},{id:'messages',l:'Messages',i:'💬'},{id:'articles',l:'Articles',i:'📝'}];
+  const kycPending=kycList.filter(k=>k.statut==='en_attente').length;
+  const TABS=[{id:'dash',l:'Dashboard',i:'📊'},{id:'products',l:'Produits',i:'📦'},{id:'orders',l:'Commandes',i:'🚚'},{id:'users',l:'Membres',i:'👥'},{id:'kyc',l:'KYC',i:'🪪',badge:kycPending||null},{id:'messages',l:'Messages',i:'💬'},{id:'articles',l:'Articles',i:'📝'}];
 
   const delProduct=async(p)=>{
     setConfirmAction({message:`Supprimer "${p.nom}" ?`,fn:async()=>{
@@ -764,7 +878,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
     <div className="admin-side">
       <div className="admin-logo">SERAO<span className="a-badge">ADMIN</span></div>
       <nav className="admin-nav">
-        {TABS.map(t=><div key={t.id} className={'a-link'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}><span style={{fontSize:'16px'}}>{t.i}</span><span>{t.l}</span></div>)}
+        {TABS.map(t=><div key={t.id} className={'a-link'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}><span style={{fontSize:'16px'}}>{t.i}</span><span>{t.l}</span>{t.badge?<span style={{marginLeft:'auto',background:'#ef4444',color:'#fff',borderRadius:'99px',fontSize:'11px',fontWeight:700,padding:'1px 7px',minWidth:'18px',textAlign:'center'}}>{t.badge}</span>:null}</div>)}
       </nav>
       <div className="admin-foot"><div className="admin-close" onClick={onClose}><span style={{fontSize:'16px'}}>←</span><span>Retour</span></div></div>
     </div>
@@ -812,6 +926,80 @@ function AdminPanel({onClose, refreshProducts, showToast}){
         <div className="a-sub">{adminArticles.length} articles</div>
         <div className="atable-wrap"><table className="atable"><thead><tr><th>Titre</th><th>Statut</th><th>Date</th><th>Action</th></tr></thead><tbody>{adminArticles.map(a=>(<tr key={a.id}><td style={{fontWeight:600}}>{a.titre}</td><td><span className={'s-pill '+(a.publie?'s-ok':'s-err')}>{a.publie?'Publié':'Brouillon'}</span></td><td style={{color:'var(--muted)'}}>{(a.publie_at||a.created_at)?.slice(0,10)||'—'}</td><td><Btn sm v="glass" onClick={()=>toggleArticle(a)}>{a.publie?'Dépublier':'Publier'}</Btn></td></tr>))}</tbody></table></div>
       </div>}
+
+      {!loading&&tab==='kyc'&&<div>
+        <div className="a-title" style={{marginBottom:'4px'}}>Vérifications d'identité</div>
+        <div className="a-sub">{kycList.length} dossier{kycList.length>1?'s':''} · {kycPending} en attente</div>
+        <div className="atable-wrap"><table className="atable">
+          <thead><tr><th>Vendeur</th><th>Document</th><th>NIN</th><th>Soumis le</th><th>Statut</th><th>Action</th></tr></thead>
+          <tbody>{kycList.map(k=>(
+            <tr key={k.id}>
+              <td><div style={{fontWeight:600}}>{k.vendeur_nom||'—'}</div><div style={{fontSize:'12px',color:'var(--muted)'}}>{k.vendeur_email}</div></td>
+              <td>{k.doc_type}</td>
+              <td style={{fontFamily:'monospace',fontSize:'13px'}}>{k.nin||'—'}</td>
+              <td style={{color:'var(--muted)'}}>{k.created_at?.slice(0,10)}</td>
+              <td><span className={'s-pill '+(k.statut==='approuve'?'s-ok':k.statut==='rejete'?'s-err':'s-warn')}>{k.statut==='approuve'?'Approuvé':k.statut==='rejete'?'Rejeté':'En attente'}</span></td>
+              <td><Btn sm v="glass" onClick={()=>openKycReview(k)}>👁 Examiner</Btn></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      </div>}
+
+      {/* KYC Review Modal */}
+      {kycSelected&&(
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setKycSelected(null);}}>
+          <div className="modal" style={{maxWidth:'780px',width:'95vw'}}>
+            <div className="modal-title">🪪 Examen KYC — {kycSelected.vendeur_nom}</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'20px',fontSize:'14px'}}>
+              <div><span style={{color:'var(--muted)'}}>Email : </span><strong>{kycSelected.vendeur_email}</strong></div>
+              <div><span style={{color:'var(--muted)'}}>Document : </span><strong>{kycSelected.doc_type}</strong></div>
+              <div><span style={{color:'var(--muted)'}}>NIN : </span><strong style={{fontFamily:'monospace'}}>{kycSelected.nin||'—'}</strong></div>
+              <div><span style={{color:'var(--muted)'}}>Nom déclaré : </span><strong>{kycSelected.nom_complet||'—'}</strong></div>
+              <div><span style={{color:'var(--muted)'}}>Date naissance : </span><strong>{kycSelected.date_naissance||'—'}</strong></div>
+              <div><span style={{color:'var(--muted)'}}>Soumis le : </span><strong>{kycSelected.created_at?.slice(0,10)}</strong></div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'12px',marginBottom:'20px'}}>
+              {[{key:'recto',label:`${kycSelected.doc_type} Recto`},{key:'verso',label:'CIN Verso'},{key:'selfie',label:'Selfie'}].map(({key,label})=>(
+                kycSignedUrls[key]?(
+                  <div key={key} style={{borderRadius:'var(--r-md)',overflow:'hidden',border:'1px solid var(--glass-border)'}}>
+                    <div style={{padding:'8px 12px',background:'var(--glass-1)',fontSize:'12px',fontWeight:600,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>{label}</div>
+                    <a href={kycSignedUrls[key]} target="_blank" rel="noreferrer">
+                      <img src={kycSignedUrls[key]} alt={label} style={{width:'100%',height:'180px',objectFit:'cover',display:'block'}}/>
+                    </a>
+                  </div>
+                ):(
+                  kycSelected[key==='recto'?'cin_recto_path':key==='verso'?'cin_verso_path':'selfie_path']?(
+                    <div key={key} style={{borderRadius:'var(--r-md)',border:'1px solid var(--glass-border)',padding:'24px',textAlign:'center',color:'var(--muted)',fontSize:'13px'}}>
+                      <div style={{fontSize:'24px',marginBottom:'8px'}}>⏳</div>Chargement…
+                    </div>
+                  ):null
+                )
+              ))}
+            </div>
+
+            {kycSelected.statut==='en_attente'&&(
+              <div>
+                <div style={{marginBottom:'12px'}}>
+                  <label className="fl">Motif de rejet (requis si rejet)</label>
+                  <textarea className="fi" rows="2" value={kycRejectMotif} onChange={e=>setKycRejectMotif(e.target.value)} placeholder="Ex : Photo illisible, document expiré, nom ne correspond pas…"/>
+                </div>
+                <div className="modal-foot">
+                  <Btn v="glass" onClick={()=>setKycSelected(null)}>Fermer</Btn>
+                  <Btn v="danger" onClick={()=>reviewKyc('rejete')} disabled={kycBusy}>❌ Rejeter</Btn>
+                  <Btn onClick={()=>reviewKyc('approuve')} disabled={kycBusy}>✅ Approuver</Btn>
+                </div>
+              </div>
+            )}
+            {kycSelected.statut!=='en_attente'&&(
+              <div>
+                {kycSelected.motif_rejet&&<div style={{padding:'12px',background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--r-md)',fontSize:'14px',marginBottom:'16px',color:'#fca5a5'}}>Motif : {kycSelected.motif_rejet}</div>}
+                <div className="modal-foot"><Btn v="glass" onClick={()=>setKycSelected(null)}>Fermer</Btn></div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   </div>);
 }
@@ -1168,7 +1356,7 @@ function PageCommandes({orders}){
 }
 
 /* ─ VENDOR DASHBOARD — list & manage own products ─ */
-function VendeurDashboard({user, showToast, refreshAll}){
+function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
   const blank={nom:'',description:'',category_id:'',region:'',prix:'',emoji:'🛍️',image_url:'',badge:'',deliv:'3-5 jours',stock:1};
   const[products,setProducts]=useState([]);
   const[categories,setCategories]=useState([]);
@@ -1178,7 +1366,18 @@ function VendeurDashboard({user, showToast, refreshAll}){
   const[busy,setBusy]=useState(false);
   const[preview,setPreview]=useState(null);
   const[confirmAction,setConfirmAction]=useState(null);
+  const[showKYC,setShowKYC]=useState(false);
+  const[kycInfo,setKycInfo]=useState(null);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const kycStatut=user?.kyc_statut||'non_soumis';
+  const kycApproved=kycStatut==='approuve';
+
+  useEffect(()=>{
+    supabase.from('kyc_demandes').select('statut,motif_rejet,created_at').eq('vendeur_id',user.id)
+      .order('created_at',{ascending:false}).limit(1).maybeSingle()
+      .then(({data})=>setKycInfo(data||null));
+  },[user.id,kycStatut]);
 
   // Revoke previous object URL when photoFile changes to prevent memory leaks. (BUG 5)
   useEffect(()=>{
@@ -1261,7 +1460,41 @@ function VendeurDashboard({user, showToast, refreshAll}){
     }});
   };
 
+  if(showKYC) return <KYCFlow user={user} showToast={showToast} onDone={async()=>{await refreshUser?.();setShowKYC(false);}}/>;
+
+  const KYCBanner=()=>{
+    if(kycStatut==='approuve') return(
+      <div className="kyc-banner kyc-ok">
+        <span>✅</span>
+        <div><strong>Identité vérifiée</strong><span> — Vous pouvez publier des produits</span></div>
+      </div>
+    );
+    if(kycStatut==='en_attente') return(
+      <div className="kyc-banner kyc-wait">
+        <span>⏳</span>
+        <div><strong>Vérification en cours</strong><span> — Délai 24-48h. Vous pourrez publier dès validation.</span></div>
+      </div>
+    );
+    if(kycStatut==='rejete') return(
+      <div className="kyc-banner kyc-err">
+        <div style={{flex:1}}>
+          <strong>Dossier rejeté</strong>
+          {kycInfo?.motif_rejet&&<div style={{fontSize:'13px',marginTop:'4px',opacity:.85}}>{kycInfo.motif_rejet}</div>}
+        </div>
+        <Btn sm onClick={()=>setShowKYC(true)}>Renvoyer →</Btn>
+      </div>
+    );
+    return(
+      <div className="kyc-banner kyc-warn">
+        <span>🪪</span>
+        <div style={{flex:1}}><strong>Vérification d'identité requise</strong><span style={{display:'block',fontSize:'13px',marginTop:'2px',opacity:.8}}>Soumettez votre CIN pour pouvoir publier des produits.</span></div>
+        <Btn sm onClick={()=>setShowKYC(true)}>Vérifier mon identité →</Btn>
+      </div>
+    );
+  };
+
   return(<div>
+    <KYCBanner/>
     {confirmAction&&(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setConfirmAction(null);}}>
         <div className="modal" style={{maxWidth:'400px'}}>
@@ -1279,7 +1512,10 @@ function VendeurDashboard({user, showToast, refreshAll}){
         <h2 className="sec-h" style={{marginBottom:'4px'}}>Ma boutique</h2>
         <div style={{color:'var(--muted)',fontSize:'14px'}}>{products.length} produit{products.length>1?'s':''} actif{products.length>1?'s':''}</div>
       </div>
-      <Btn onClick={openNew}>+ Nouveau produit</Btn>
+      {kycApproved
+        ?<Btn onClick={openNew}>+ Nouveau produit</Btn>
+        :<Btn v="glass" style={{opacity:.5,cursor:'not-allowed'}} title="Vérification d'identité requise">🔒 Nouveau produit</Btn>
+      }
     </div>
 
     {products.length===0&&!editing&&(
@@ -1388,16 +1624,11 @@ function VendeurDashboard({user, showToast, refreshAll}){
 }
 
 function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
-  const[showKYC,setShowKYC]=useState(false);
   const becomeVendor=async()=>{
     if(!user){setShowAuth(true);return;}
-    // Role change goes through a controlled SECURITY DEFINER function: the
-    // client can no longer write `role` directly (cf. S2). It only ever
-    // promotes acheteur → vendeur, never to admin.
     const{error}=await supabase.rpc('request_vendor');
     if(error){showToast(error.message,'err');return;}
     showToast('Tu es maintenant vendeur 🎉');
-    setShowKYC(true);
     refreshUser?.();
   };
 
@@ -1410,9 +1641,7 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
     </div></div>
     <section className="section"><div className="wrap">
       {canSell?(
-        showKYC
-          ?<KYCFlow showToast={showToast} onDone={()=>{setShowKYC(false);refreshUser?.();}}/>
-          :<VendeurDashboard user={user} showToast={showToast} refreshAll={refreshProducts}/>
+        <VendeurDashboard user={user} showToast={showToast} refreshAll={refreshProducts} refreshUser={refreshUser}/>
       ):(
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'40px',alignItems:'start'}}>
           <div>
