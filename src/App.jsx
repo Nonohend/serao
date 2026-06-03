@@ -1298,8 +1298,8 @@ function PageContact({showToast,user}){
     <div className="page-hero"><div className="wrap"><h1>Contact</h1><p>Une question, un partenariat, un souci ? Écris-nous.</p></div></div>
     <section className="section"><div className="wrap" style={{maxWidth:'600px'}}>
       <div className="glass" style={{padding:'28px',borderRadius:'var(--r-xl)',marginBottom:'20px',display:'grid',gap:'10px',fontSize:'14px',color:'var(--muted)'}}>
-        <div>📧 <strong style={{color:'var(--text)'}}>contact@serao.mg</strong></div>
-        <div>📞 <strong style={{color:'var(--text)'}}>+261 34 00 000 00</strong></div>
+        <div>📧 <a href="mailto:nohannsamby@gmail.com" style={{color:'var(--text)',textDecoration:'none'}}><strong>nohannsamby@gmail.com</strong></a></div>
+        <div>💬 <a href="https://wa.me/261381714548" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)',textDecoration:'none'}}><strong>WhatsApp : +261 38 171 45 48</strong></a></div>
         <div>📍 Antananarivo, Madagascar · Lun–Sam 8h–18h</div>
       </div>
       <form onSubmit={submit}>
@@ -1686,7 +1686,7 @@ INFORMATIONS CLÉS SUR SERAO :
 - Produits disponibles : Vanille, Artisanat, Épices, Cosmétiques, Textiles, Bijoux
 - Paiements acceptés : MVola, Orange Money, Airtel Money
 - Livraison : 3 à 5 jours en moyenne partout à Madagascar
-- Support disponible 7j/7
+- Support disponible 7j/7 — WhatsApp : +261 38 171 45 48 — Email : nohannsamby@gmail.com
 
 POUR DEVENIR VENDEUR :
 1. Créer un compte sur SERAO
