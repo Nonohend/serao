@@ -89,6 +89,121 @@ function ProdCard({p,onBuy}){
   );
 }
 
+/* ─ P2P PAYMENT PANEL ─ */
+function P2PPaymentPanel({orderId,product,method,user,showToast,onClose}){
+  const[vendorProfile,setVendorProfile]=useState(null);
+  const[proofFile,setProofFile]=useState(null);
+  const[proofStatus,setProofStatus]=useState('idle'); // idle | uploading | done
+  const[rated,setRated]=useState(0);
+
+  useEffect(()=>{
+    if(!product?.vendeur_id)return;
+    supabase.from('profiles').select('mvola_number,orange_number,airtel_number,tel').eq('id',product.vendeur_id).maybeSingle()
+      .then(({data})=>setVendorProfile(data));
+  },[product?.vendeur_id]);
+
+  const getVendorPhone=()=>{
+    if(!vendorProfile)return null;
+    if(method==='mvola')return vendorProfile.mvola_number||vendorProfile.tel||null;
+    if(method==='orange')return vendorProfile.orange_number||vendorProfile.tel||null;
+    if(method==='airtel')return vendorProfile.airtel_number||vendorProfile.tel||null;
+    return vendorProfile.tel||null;
+  };
+
+  const uploadProof=async()=>{
+    if(!proofFile)return;
+    setProofStatus('uploading');
+    try{
+      const ext=proofFile.name.split('.').pop();
+      const path=`${user.id}/proof_${orderId}_${Date.now()}.${ext}`;
+      const{error:upErr}=await supabase.storage.from('product-photos').upload(path,proofFile,{contentType:proofFile.type});
+      if(upErr)throw upErr;
+      const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
+      await supabase.rpc('upload_payment_proof',{p_order_id:orderId,p_proof_url:data.publicUrl});
+      setProofStatus('done');
+      showToast('Preuve envoyée ✓ — En attente du vendeur');
+    }catch(ex){showToast(ex.message,'err');setProofStatus('idle');}
+  };
+
+  const rate=async(n)=>{
+    setRated(n);
+    try{await supabase.from('reviews').upsert({product_id:product?.id,auteur_id:user?.id,note:n},{onConflict:'product_id,auteur_id'});}catch{}
+  };
+
+  const vendPhone=getVendorPhone();
+  const methodName=method==='mvola'?'MVola':method==='orange'?'Orange Money':'Airtel Money';
+
+  return(
+    <div className="pay-success">
+      <div style={{fontSize:'32px',marginBottom:'8px'}}>📋</div>
+      <div style={{fontFamily:'var(--font-display)',fontSize:'20px',fontWeight:800,color:'var(--emerald-glow)',marginBottom:'4px'}}>Commande confirmée !</div>
+      <div style={{color:'var(--muted)',fontSize:'14px',marginBottom:'20px'}}>Effectuez votre virement {methodName} au vendeur</div>
+
+      <div style={{background:'var(--glass-emerald)',border:'1px solid var(--glass-border-hi)',borderRadius:'var(--r-lg)',padding:'16px',marginBottom:'16px',textAlign:'left'}}>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:'10px'}}>
+          <span style={{color:'var(--muted)',fontSize:'13px'}}>Méthode</span>
+          <span style={{fontWeight:700}}>{methodName}</span>
+        </div>
+        {vendPhone?(
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:'10px'}}>
+            <span style={{color:'var(--muted)',fontSize:'13px'}}>Numéro vendeur</span>
+            <span style={{fontWeight:700,color:'var(--emerald-glow)',fontSize:'16px'}}>{vendPhone}</span>
+          </div>
+        ):(
+          <div style={{color:'var(--muted)',fontSize:'13px',marginBottom:'10px'}}>Le vendeur vous contactera pour le numéro de paiement.</div>
+        )}
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:'10px'}}>
+          <span style={{color:'var(--muted)',fontSize:'13px'}}>Montant</span>
+          <span style={{fontWeight:800,fontSize:'18px',color:'var(--cyan)'}}>{(product?.prix||0).toLocaleString('fr-MG')} Ar</span>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between'}}>
+          <span style={{color:'var(--muted)',fontSize:'13px'}}>Référence</span>
+          <span style={{fontWeight:700,fontSize:'12px',fontFamily:'monospace',color:'var(--cyan-light)'}}>{orderId}</span>
+        </div>
+      </div>
+
+      {proofStatus==='idle'&&(
+        <div style={{marginBottom:'16px'}}>
+          <div style={{fontSize:'13px',color:'var(--muted)',marginBottom:'8px'}}>Après avoir payé, uploadez votre capture d'écran :</div>
+          <label style={{display:'flex',alignItems:'center',gap:'10px',padding:'12px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',cursor:'pointer',background:'var(--glass-1)'}}>
+            <span style={{fontSize:'24px'}}>📸</span>
+            <span style={{fontSize:'13px',color:'var(--muted)'}}>{proofFile?proofFile.name:'Sélectionner la preuve de paiement'}</span>
+            <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setProofFile(e.target.files[0]);e.target.value='';}}/>
+          </label>
+          {proofFile&&(
+            <button onClick={uploadProof} style={{marginTop:'10px',width:'100%',padding:'12px',background:'var(--emerald)',color:'#fff',border:'none',borderRadius:'var(--r-pill)',fontWeight:700,fontSize:'14px',cursor:'pointer'}}>
+              Envoyer la preuve ✓
+            </button>
+          )}
+        </div>
+      )}
+      {proofStatus==='uploading'&&(
+        <div style={{padding:'16px',textAlign:'center',color:'var(--muted)',fontSize:'14px',marginBottom:'16px'}}>
+          <div className="pay-spinner" style={{margin:'0 auto 12px'}}/>
+          Upload en cours...
+        </div>
+      )}
+      {proofStatus==='done'&&(
+        <div style={{padding:'14px',background:'rgba(20,123,99,0.15)',border:'1px solid rgba(20,123,99,0.3)',borderRadius:'var(--r-md)',marginBottom:'16px',textAlign:'center'}}>
+          <div style={{fontSize:'24px',marginBottom:'6px'}}>⏳</div>
+          <div style={{fontWeight:700,color:'var(--emerald-glow)'}}>Preuve envoyée</div>
+          <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'4px'}}>En attente de confirmation du vendeur</div>
+        </div>
+      )}
+
+      <div style={{marginBottom:'16px'}}>
+        <div style={{color:'var(--muted)',fontSize:'13px',marginBottom:'8px'}}>Notez ce produit</div>
+        <div style={{display:'flex',gap:'8px',justifyContent:'center',fontSize:'28px'}}>
+          {[1,2,3,4,5].map(n=>(
+            <span key={n} onClick={()=>rate(n)} style={{cursor:'pointer',filter:n<=rated?'none':'grayscale(1)',opacity:n<=rated?1:0.45}}>⭐</span>
+          ))}
+        </div>
+      </div>
+      <Btn onClick={onClose} style={{width:'100%'}}>Retour au catalogue</Btn>
+    </div>
+  );
+}
+
 /* ─ PAYMENT MODAL ─ */
 function PaymentModal({product, onClose, showToast, user}){
   const[method,setMethod]=useState('');
@@ -183,25 +298,14 @@ function PaymentModal({product, onClose, showToast, user}){
           </div>
         )}
         {status==='success'&&(
-          <div className="pay-success">
-            <div className="pay-success-icon">✅</div>
-            <div style={{fontFamily:'var(--font-display)',fontSize:'24px',fontWeight:800,color:'var(--emerald-glow)',marginBottom:'8px'}}>Paiement réussi !</div>
-            <div style={{color:'var(--muted)',fontSize:'15px',marginBottom:'24px'}}>{product?.nom} · {fmt(product?.prix||0)}</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',fontSize:'13px',marginBottom:'24px'}}>
-              <div style={{padding:'12px',background:'var(--glass-1)',borderRadius:'var(--r-md)',textAlign:'center'}}><div style={{color:'var(--muted)',marginBottom:'4px'}}>Réf. commande</div><div style={{fontWeight:700,color:'var(--cyan-light)'}}>{orderId||'…'}</div></div>
-              <div style={{padding:'12px',background:'var(--glass-1)',borderRadius:'var(--r-md)',textAlign:'center'}}><div style={{color:'var(--muted)',marginBottom:'4px'}}>Délai livraison</div><div style={{fontWeight:700,color:'var(--cyan-light)'}}>{product?.deliv}</div></div>
-            </div>
-            <div style={{marginBottom:'20px'}}>
-              <div style={{color:'var(--muted)',fontSize:'13px',marginBottom:'8px'}}>Notez ce produit</div>
-              <div style={{display:'flex',gap:'8px',justifyContent:'center',fontSize:'30px'}}>
-                {[1,2,3,4,5].map(n=>(
-                  <span key={n} onClick={()=>rate(n)} role="button" aria-label={`${n} étoile${n>1?'s':''}`} style={{cursor:'pointer',transition:'transform .15s',transform:n<=rated?'scale(1.1)':'none',filter:n<=rated?'none':'grayscale(1)',opacity:n<=rated?1:0.45}}>⭐</span>
-                ))}
-              </div>
-              {rated>0&&<div style={{color:'var(--emerald-glow)',fontSize:'12px',marginTop:'8px'}}>Merci pour votre avis !</div>}
-            </div>
-            <Btn onClick={onClose} style={{width:'100%'}}>Retour au catalogue</Btn>
-          </div>
+          <P2PPaymentPanel
+            orderId={orderId}
+            product={product}
+            method={method}
+            user={user}
+            showToast={showToast}
+            onClose={onClose}
+          />
         )}
       </div>
     </div>
