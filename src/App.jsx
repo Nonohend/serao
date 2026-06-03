@@ -1430,13 +1430,13 @@ function PageProfil({user,showToast,refreshUser,nav}){
         const ext=avatarFile.name.split('.').pop();
         const path=`avatars/${user.id}.${ext}`;
         const{error:e}=await supabase.storage.from('product-photos').upload(path,avatarFile,{upsert:true,contentType:avatarFile.type});
-        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);avatar_url=data.publicUrl;}
+        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);avatar_url=data.publicUrl+'?t='+Date.now();}
       }
       if(bannerFile){
         const ext=bannerFile.name.split('.').pop();
         const path=`banners/${user.id}.${ext}`;
         const{error:e}=await supabase.storage.from('product-photos').upload(path,bannerFile,{upsert:true,contentType:bannerFile.type});
-        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);shop_banner_url=data.publicUrl;}
+        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);shop_banner_url=data.publicUrl+'?t='+Date.now();}
       }
 
       const updates={nom:form.nom,bio:form.bio,region:form.region,avatar_url,shop_name:form.shop_name,shop_description:form.shop_description,shop_banner_url,updated_at:new Date().toISOString()};
@@ -1599,6 +1599,8 @@ function PageMessages({user,showToast}){
   const[search,setSearch]=useState('');
   const[sending,setSending]=useState(false);
   const[menuFor,setMenuFor]=useState(null);
+  const[mediaFile,setMediaFile]=useState(null);
+  const[mediaPreview,setMediaPreview]=useState(null);
   const bottomRef=useRef();
   const inputRef=useRef();
   const lastMsgAt=useRef(null);
@@ -1656,12 +1658,23 @@ function PageMessages({user,showToast}){
   };
 
   const send=async()=>{
-    if(!input.trim()||sending||!user)return;
+    if((!input.trim()&&!mediaFile)||sending||!user)return;
     setSending(true);
-    const text=input.trim();setInput('');
-    const payload={from_user:user.id,content:text,...(active.type==='channel'?{channel:active.id,to_user:null}:{to_user:active.id,channel:null})};
+    let content=input.trim();
+    if(mediaFile){
+      const ext=mediaFile.name.split('.').pop();
+      const path=`chat/${user.id}/${Date.now()}.${ext}`;
+      const{error:upErr}=await supabase.storage.from('product-photos').upload(path,mediaFile,{contentType:mediaFile.type});
+      if(!upErr){
+        const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
+        content=JSON.stringify({_t:'media',url:data.publicUrl,mime:mediaFile.type,text:content||undefined});
+      }
+      setMediaFile(null);setMediaPreview(null);
+    }
+    setInput('');
+    const payload={from_user:user.id,content,...(active.type==='channel'?{channel:active.id,to_user:null}:{to_user:active.id,channel:null})};
     const{error}=await supabase.from('messages').insert(payload);
-    if(error){setInput(text);}
+    if(error&&!mediaFile){setInput(content);}
     setSending(false);
     inputRef.current?.focus();
   };
@@ -1761,7 +1774,7 @@ function PageMessages({user,showToast}){
                 <div className="msg-bubbles">
                   {!mine&&item._showAv&&<div className="msg-sender">{sender.nom}</div>}
                   <div className={`bubble ${mine?'bubble-mine':'bubble-them'}`} onDoubleClick={()=>setMenuFor(menuFor===item.id?null:item.id)}>
-                    {item.content}
+                    {(()=>{try{const p=JSON.parse(item.content);if(p._t==='media'){return(<div>{p.mime?.startsWith('video/')?<video src={p.url} controls style={{maxWidth:'100%',maxHeight:220,borderRadius:8,display:'block'}}/>:<img src={p.url} alt="" style={{maxWidth:'100%',maxHeight:220,borderRadius:8,display:'block',cursor:'zoom-in'}} onClick={()=>window.open(p.url,'_blank')}/>}{p.text&&<div style={{marginTop:6,fontSize:13}}>{p.text}</div>}</div>);}}catch{}return item.content;})()
                     {menuFor===item.id&&(mine||user?.role==='admin')&&(
                       <div style={{marginTop:'6px',display:'flex',gap:'6px'}}>
                         <button onClick={async()=>{await supabase.from('messages').delete().eq('id',item.id);setMenuFor(null);}} style={{fontSize:'11px',background:'rgba(239,68,68,0.2)',border:'1px solid rgba(239,68,68,0.4)',color:'#fca5a5',borderRadius:'var(--r-pill)',padding:'2px 8px',cursor:'pointer'}}>Supprimer</button>
@@ -1777,19 +1790,31 @@ function PageMessages({user,showToast}){
         </div>
 
         {/* Input */}
-        <div className="msg-input-row">
-          <textarea
-            ref={inputRef}
-            className="msg-input"
-            rows="1"
-            value={input}
-            onChange={e=>setInput(e.target.value)}
-            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
-            placeholder={`Message ${active.name}...`}
-          />
-          <button className="chat-send" onClick={send} disabled={sending||!input.trim()}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
+        <div className="msg-input-row" style={{flexDirection:'column',gap:0}}>
+          {mediaPreview&&(
+            <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:8,padding:'8px',background:'var(--glass-1)',borderRadius:'var(--r-md)',border:'1px solid var(--glass-border)'}}>
+              {mediaFile?.type.startsWith('video/')?<video src={mediaPreview} style={{maxHeight:100,maxWidth:140,borderRadius:6}}/>:<img src={mediaPreview} alt="" style={{maxHeight:100,maxWidth:140,borderRadius:6,objectFit:'cover'}}/>}
+              <button onClick={()=>{setMediaFile(null);setMediaPreview(null);}} style={{marginLeft:'auto',background:'rgba(239,68,68,0.2)',border:'1px solid rgba(239,68,68,0.4)',color:'#fca5a5',borderRadius:'var(--r-pill)',padding:'2px 8px',fontSize:12,cursor:'pointer',flexShrink:0}}>✕</button>
+            </div>
+          )}
+          <div style={{display:'flex',gap:8,alignItems:'flex-end',width:'100%'}}>
+            <label className="msg-media-btn" title="Photo / Vidéo">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <input type="file" accept="image/*,video/*" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){setMediaFile(f);setMediaPreview(URL.createObjectURL(f));}e.target.value='';}}/>
+            </label>
+            <textarea
+              ref={inputRef}
+              className="msg-input"
+              rows="1"
+              value={input}
+              onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+              placeholder={`Message ${active.name}...`}
+            />
+            <button className="chat-send" onClick={send} disabled={sending||(!input.trim()&&!mediaFile)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
