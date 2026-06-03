@@ -1520,6 +1520,7 @@ function PageProfil({user,showToast,refreshUser,nav}){
     setForm({
       nom:profile?.nom||'',bio:profile?.bio||'',region:profile?.region||'',tel:'',
       shop_name:profile?.shop_name||'',shop_description:profile?.shop_description||'',
+      mvola_number:profile?.mvola_number||'',orange_number:profile?.orange_number||'',airtel_number:profile?.airtel_number||'',
     });
     setEditing(true);
   };
@@ -1547,7 +1548,7 @@ function PageProfil({user,showToast,refreshUser,nav}){
         shop_banner_url=data.publicUrl;
       }
 
-      const updates={nom:form.nom,bio:form.bio,region:form.region,avatar_url,shop_name:form.shop_name,shop_description:form.shop_description,shop_banner_url,updated_at:new Date().toISOString()};
+      const updates={nom:form.nom,bio:form.bio,region:form.region,avatar_url,shop_name:form.shop_name,shop_description:form.shop_description,shop_banner_url,mvola_number:form.mvola_number,orange_number:form.orange_number,airtel_number:form.airtel_number,updated_at:new Date().toISOString()};
       const{error}=await supabase.from('profiles').update(updates).eq('id',user.id);
       if(error)throw error;
       if(form.tel){await supabase.from('profiles').update({tel:form.tel}).eq('id',user.id);}
@@ -1619,6 +1620,10 @@ function PageProfil({user,showToast,refreshUser,nav}){
                   <div className="fg"><label className="fl">Région</label><input className="fi" value={form.region} onChange={e=>setF('region',e.target.value)} placeholder="ex: Antananarivo"/></div>
                   <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.tel} onChange={e=>setF('tel',e.target.value)} placeholder="+261 34..."/></div>
                 </div>
+                <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'16px',fontWeight:700,color:'var(--text)',fontSize:'15px'}}>💳 Numéros de paiement Mobile Money</div>
+                <div className="fg"><label className="fl">Numéro MVola</label><input className="fi" placeholder="034 XX XXX XX" value={form.mvola_number||''} onChange={e=>setF('mvola_number',e.target.value)}/></div>
+                <div className="fg"><label className="fl">Numéro Orange Money</label><input className="fi" placeholder="032 XX XXX XX" value={form.orange_number||''} onChange={e=>setF('orange_number',e.target.value)}/></div>
+                <div className="fg"><label className="fl">Numéro Airtel Money</label><input className="fi" placeholder="033 XX XXX XX" value={form.airtel_number||''} onChange={e=>setF('airtel_number',e.target.value)}/></div>
                 {isVendeur&&<>
                   <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'16px',fontWeight:700,color:'var(--text)',fontSize:'15px'}}>🏪 Ma boutique</div>
                   <div className="fg"><label className="fl">Nom de la boutique</label><input className="fi" value={form.shop_name} onChange={e=>setF('shop_name',e.target.value)} placeholder="ex: Vanille de Sava"/></div>
@@ -1931,8 +1936,29 @@ function PageMessages({user,showToast}){
 }
 
 /* ─ COMMANDES ─ */
-function PageCommandes({orders}){
-  const STATUS_COLOR={confirme:'#60a5fa',preparation:'#fb923c',expedie:'#a78bfa',transit:'#22d3ee',livre:'#4ade80',annule:'#f87171'};
+function PageCommandes({orders,user,showToast,refresh}){
+  const[proofFiles,setProofFiles]=useState({});
+  const[uploading,setUploading]=useState({});
+  const STATUS_COLOR={confirme:'#60a5fa',preparation:'#fb923c',expedie:'#a78bfa',transit:'#22d3ee',livre:'#4ade80',annule:'#f87171',litige:'#f87171'};
+  const P2P_LABEL={waiting_payment:'En attente de paiement',proof_uploaded:'Preuve envoyée — attente vendeur',confirmed:'Paiement confirmé',disputed:'Litige ouvert',resolved:'Litige résolu'};
+
+  const uploadProof=async(orderId)=>{
+    const file=proofFiles[orderId];
+    if(!file||!user)return;
+    setUploading(u=>({...u,[orderId]:true}));
+    try{
+      const ext=file.name.split('.').pop();
+      const path=`${user.id}/proof_${orderId}_${Date.now()}.${ext}`;
+      const{error:upErr}=await supabase.storage.from('product-photos').upload(path,file,{contentType:file.type});
+      if(upErr)throw upErr;
+      const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
+      await supabase.rpc('upload_payment_proof',{p_order_id:String(orderId),p_proof_url:data.publicUrl});
+      showToast('Preuve envoyée ✓');
+      refresh?.();
+    }catch(ex){showToast(ex.message,'err');}
+    finally{setUploading(u=>({...u,[orderId]:false}));}
+  };
+
   return(<div>
     <div className="page-hero"><div className="wrap"><h1>Mes commandes</h1><p>{orders.length} commande{orders.length!==1?'s':''}</p></div></div>
     <section className="section"><div className="wrap">
@@ -1941,19 +1967,62 @@ function PageCommandes({orders}){
         <div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucune commande</div>
         <div style={{color:'var(--muted)'}}>Vos achats apparaîtront ici.</div>
       </div>}
-      {orders.length>0&&(
-        <div className="atable-wrap"><table className="atable"><thead><tr><th>Réf.</th><th>Produit</th><th>Montant</th><th>Paiement</th><th>Statut</th><th>Date</th></tr></thead>
-        <tbody>{orders.map(o=>{const c=STATUS_COLOR[o.status]||'var(--text)';return(
-          <tr key={o.id}>
-            <td><strong style={{color:'var(--cyan-light)'}}>{o.id}</strong></td>
-            <td>{o.produit}</td>
-            <td style={{fontWeight:700}}>{fmt(o.montant)}</td>
-            <td style={{color:'var(--muted)'}}>{o.pay_method||'—'}</td>
-            <td><span style={{padding:'3px 10px',borderRadius:'999px',fontSize:'12px',fontWeight:600,background:c+'22',color:c,border:`1px solid ${c}44`}}>{o.status}</span></td>
-            <td style={{color:'var(--muted)'}}>{o.date}</td>
-          </tr>
-        );})}</tbody></table></div>
-      )}
+      <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
+      {orders.map(o=>{
+        const c=STATUS_COLOR[o.status]||'var(--text)';
+        const p2pLabel=P2P_LABEL[o.p2p_status]||o.p2p_status||'';
+        const canUpload=(!o.p2p_status||o.p2p_status==='waiting_payment');
+        return(
+          <div key={o.id} className="glass" style={{padding:'20px',borderRadius:'var(--r-lg)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'12px',flexWrap:'wrap',gap:'8px'}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:'16px',marginBottom:'2px'}}>{o.product_nom||o.produit}</div>
+                <div style={{fontSize:'12px',color:'var(--muted)',fontFamily:'monospace'}}>#{o.id}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontWeight:800,fontSize:'18px',color:'var(--emerald-glow)'}}>{(o.montant||0).toLocaleString('fr-MG')} Ar</div>
+                <span style={{padding:'3px 10px',borderRadius:'999px',fontSize:'11px',fontWeight:600,background:c+'22',color:c,border:`1px solid ${c}44`}}>{o.status}</span>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:'16px',fontSize:'13px',color:'var(--muted)',marginBottom:'12px',flexWrap:'wrap'}}>
+              <span>💳 {o.pay_method||'—'}</span>
+              <span>📅 {o.date||(o.created_at?new Date(o.created_at).toLocaleDateString('fr-FR'):'')}</span>
+            </div>
+            {p2pLabel&&(
+              <div style={{padding:'10px 14px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'13px',color:'var(--emerald-glow)',fontWeight:600,marginBottom:'12px'}}>
+                🔄 {p2pLabel}
+              </div>
+            )}
+            {o.p2p_status==='disputed'&&o.dispute_reason&&(
+              <div style={{padding:'10px 14px',background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--r-md)',fontSize:'13px',color:'#fca5a5',marginBottom:'12px'}}>
+                ⚠️ Litige : {o.dispute_reason}
+              </div>
+            )}
+            {o.payment_proof_url&&(
+              <div style={{marginBottom:'12px'}}>
+                <div style={{fontSize:'12px',color:'var(--muted)',marginBottom:'6px'}}>Preuve de paiement :</div>
+                <img src={o.payment_proof_url} alt="Preuve" style={{maxWidth:'100%',maxHeight:160,borderRadius:'var(--r-md)',objectFit:'cover',cursor:'pointer'}} onClick={()=>window.open(o.payment_proof_url,'_blank')}/>
+              </div>
+            )}
+            {canUpload&&(
+              <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'12px'}}>
+                <div style={{fontSize:'13px',color:'var(--muted)',marginBottom:'8px'}}>Uploadez votre preuve de paiement :</div>
+                <label style={{display:'flex',alignItems:'center',gap:'8px',padding:'10px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',cursor:'pointer',background:'var(--glass-1)',fontSize:'13px'}}>
+                  <span>📸</span>
+                  <span style={{color:'var(--muted)'}}>{proofFiles[o.id]?proofFiles[o.id].name:'Capture d\'écran du virement'}</span>
+                  <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f)setProofFiles(pf=>({...pf,[o.id]:f}));e.target.value='';}}/>
+                </label>
+                {proofFiles[o.id]&&(
+                  <button onClick={()=>uploadProof(o.id)} disabled={uploading[o.id]} style={{marginTop:'8px',width:'100%',padding:'10px',background:'var(--emerald)',color:'#fff',border:'none',borderRadius:'var(--r-pill)',fontWeight:700,fontSize:'13px',cursor:'pointer',opacity:uploading[o.id]?0.6:1}}>
+                    {uploading[o.id]?'Envoi...':'Envoyer la preuve ✓'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      </div>
     </div></section>
   </div>);
 }
@@ -2193,6 +2262,29 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
               </div>
             ):(
               <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'6px'}}>📍 Localisation non disponible — contactez l'acheteur pour l'adresse.</div>
+            )}
+            {o.p2p_status==='proof_uploaded'&&(
+              <div style={{borderTop:'1px solid var(--glass-border)',marginTop:'12px',paddingTop:'12px'}}>
+                <div style={{fontWeight:600,fontSize:'13px',color:'var(--emerald-glow)',marginBottom:'10px'}}>📋 Preuve de paiement reçue</div>
+                {o.payment_proof_url&&(
+                  <div style={{marginBottom:'10px'}}>
+                    <img src={o.payment_proof_url} alt="Preuve" style={{maxWidth:'100%',maxHeight:160,borderRadius:'var(--r-md)',objectFit:'cover',cursor:'pointer',display:'block'}} onClick={()=>window.open(o.payment_proof_url,'_blank')}/>
+                  </div>
+                )}
+                <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                  <button onClick={()=>supabase.rpc('confirm_order_payment',{p_order_id:String(o.id)}).then(()=>{showToast('Paiement confirmé ✓');load();})} style={{flex:1,padding:'9px 14px',background:'var(--emerald)',color:'#fff',border:'none',borderRadius:'var(--r-pill)',fontWeight:700,fontSize:'13px',cursor:'pointer'}}>
+                    ✓ Confirmer paiement reçu
+                  </button>
+                  <button onClick={()=>{const r=window.prompt('Motif du litige :');if(r)supabase.rpc('open_order_dispute',{p_order_id:String(o.id),p_reason:r}).then(()=>{showToast('Litige ouvert');load();});}} style={{flex:1,padding:'9px 14px',background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--r-pill)',fontWeight:700,fontSize:'13px',cursor:'pointer'}}>
+                    ⚠️ Ouvrir un litige
+                  </button>
+                </div>
+              </div>
+            )}
+            {o.p2p_status&&o.p2p_status!=='proof_uploaded'&&(
+              <div style={{marginTop:'10px',padding:'8px 12px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'13px',color:'var(--emerald-glow)',fontWeight:600}}>
+                🔄 {{waiting_payment:'En attente de paiement acheteur',confirmed:'Paiement confirmé',disputed:'Litige ouvert',resolved:'Litige résolu'}[o.p2p_status]||o.p2p_status}
+              </div>
             )}
           </div>
         ))}
@@ -2631,6 +2723,8 @@ function App(){
   },[]);
 
   // Load orders when user logs in (RLS only returns own orders)
+  const[ordersVersion,setOrdersVersion]=useState(0);
+  const refreshOrders=useCallback(()=>setOrdersVersion(v=>v+1),[]);
   useEffect(()=>{
     if(!user){setOrders([]);return;}
     let mounted=true;
@@ -2641,13 +2735,13 @@ function App(){
         .order('created_at',{ascending:false});
       if(!mounted||error)return;
       const mapped=(data||[]).map(o=>({
-        id:o.id,produit:o.product_nom,client:o.acheteur_id===user.id?(user.nom||'Moi'):'',montant:Number(o.montant),pay_method:o.pay_method,status:o.status,date:o.created_at?.slice(0,10)
+        id:o.id,produit:o.product_nom,product_nom:o.product_nom,client:o.acheteur_id===user.id?(user.nom||'Moi'):'',montant:Number(o.montant),pay_method:o.pay_method,status:o.status,date:o.created_at?.slice(0,10),created_at:o.created_at,p2p_status:o.p2p_status,payment_proof_url:o.payment_proof_url,dispute_reason:o.dispute_reason,
       }));
       setOrders(mapped);
       setCart(mapped.filter(o=>o.status!=='annule').length); // BUG 9: initialize cart from real orders
     })();
     return()=>{mounted=false;};
-  },[user]);
+  },[user,ordersVersion]);
 
   // Real unread badge (replaces the old localStorage stub).
   // Counts messages addressed to me (public channels or my DMs) that arrived
@@ -2816,7 +2910,7 @@ function App(){
     {page==='cgu'       &&<PageCGU/>}
     {page==='confidentialite'&&<PageConfidentialite/>}
     {page==='vendeur'   &&<PageVendeur user={user} showToast={showToast} setShowAuth={setShowAuth} refreshUser={refreshUser} refreshProducts={refreshProducts}/>}
-    {page==='commandes' &&<PageCommandes orders={orders}/>}
+    {page==='commandes' &&<PageCommandes orders={orders} user={user} showToast={showToast} refresh={refreshOrders}/>}
     {page==='messages'  &&<PageMessages user={user} showToast={showToast}/>}
     {page==='profil'    &&<PageProfil user={user} showToast={showToast} refreshUser={refreshUser} nav={nav}/>}
 
