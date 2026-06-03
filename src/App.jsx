@@ -96,16 +96,37 @@ function PaymentModal({product, onClose, showToast, user}){
   const[status,setStatus]=useState('select'); // select | processing | success
   const[orderId,setOrderId]=useState(null);
   const[rated,setRated]=useState(0);
+  const[geo,setGeo]=useState({lat:null,lng:null,address:'',loading:false,denied:false});
   const methods=[{id:'mvola',icon:'📱',name:'MVola',color:'#E30913'},{id:'orange',icon:'🟠',name:'Orange Money',color:'#FF6600'},{id:'airtel',icon:'❤️',name:'Airtel Money',color:'#FF0000'}];
+
+  // Request geolocation as soon as the modal opens
+  useEffect(()=>{
+    if(!navigator.geolocation) return;
+    setGeo(g=>({...g,loading:true}));
+    navigator.geolocation.getCurrentPosition(
+      async pos=>{
+        const{latitude:lat,longitude:lng}=pos.coords;
+        let address='';
+        try{
+          const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,{headers:{'Accept-Language':'fr'}});
+          const d=await r.json();
+          address=d.display_name||'';
+        }catch{}
+        setGeo({lat,lng,address,loading:false,denied:false});
+      },
+      ()=>setGeo(g=>({...g,loading:false,denied:true})),
+      {timeout:8000,enableHighAccuracy:true}
+    );
+  },[]);
+
   const pay=async()=>{
     if(!method||!phone){showToast('Sélectionnez un moyen de paiement et entrez votre numéro','err');return;}
     setStatus('processing');
-    // Simulate the Mobile Money gateway delay, then create the order via the
-    // server-side RPC. The amount is recomputed from the product price in the
-    // database, so a tampered client can never spoof the price (cf. S4).
     setTimeout(async()=>{
       try{
-        const{data,error}=await supabase.rpc('create_order',{p_product_id:product?.id,p_pay_method:method});
+        const params={p_product_id:product?.id,p_pay_method:method};
+        if(geo.lat) Object.assign(params,{p_delivery_lat:geo.lat,p_delivery_lng:geo.lng,p_delivery_address:geo.address});
+        const{data,error}=await supabase.rpc('create_order',params);
         if(error){console.warn('order create failed',error);showToast('Erreur enregistrement commande : '+error.message,'err');setStatus('select');return;}
         setOrderId(data?.id);
         setStatus('success');
@@ -140,8 +161,13 @@ function PaymentModal({product, onClose, showToast, user}){
             </div>
           </div>
           <div className="fg"><label className="fl">Numéro Mobile Money</label><input className="fi" placeholder="+261 34 00 000 00" value={phone} onChange={e=>setPhone(e.target.value)}/></div>
-          <div style={{padding:'14px',background:'rgba(20,123,99,0.1)',border:'1px solid rgba(20,123,99,0.2)',borderRadius:'var(--r-md)',marginBottom:'20px',fontSize:'13px',color:'var(--muted)'}}>
+          <div style={{padding:'14px',background:'rgba(20,123,99,0.1)',border:'1px solid rgba(20,123,99,0.2)',borderRadius:'var(--r-md)',marginBottom:'12px',fontSize:'13px',color:'var(--muted)'}}>
             📲 Vous recevrez une demande de confirmation sur votre téléphone. Commission SERAO : 3%.
+          </div>
+          <div style={{padding:'12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)',marginBottom:'20px',fontSize:'13px'}}>
+            {geo.loading&&<span style={{color:'var(--muted)'}}>📍 Localisation en cours...</span>}
+            {!geo.loading&&geo.lat&&<div><div style={{color:'var(--emerald-glow)',fontWeight:600,marginBottom:'4px'}}>📍 Adresse de livraison détectée</div><div style={{color:'var(--muted)',fontSize:'12px',lineHeight:1.4}}>{geo.address||`${geo.lat.toFixed(4)}, ${geo.lng.toFixed(4)}`}</div></div>}
+            {!geo.loading&&geo.denied&&<span style={{color:'var(--muted)'}}>📍 Localisation non disponible — le vendeur vous contactera pour l'adresse.</span>}
           </div>
           <div className="modal-foot">
             <Btn v="glass" onClick={onClose}>Annuler</Btn>
@@ -1373,6 +1399,9 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
   const[confirmAction,setConfirmAction]=useState(null);
   const[showKYC,setShowKYC]=useState(false);
   const[kycInfo,setKycInfo]=useState(null);
+  const[vendOrders,setVendOrders]=useState([]);
+  const[vendTab,setVendTab]=useState('products');
+  const[mapOrder,setMapOrder]=useState(null);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
 
   const kycStatut=user?.kyc_statut||'non_soumis';
@@ -1393,11 +1422,12 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
   },[photoFile]);
 
   const load=useCallback(async()=>{
-    const[p,c]=await Promise.all([
+    const[p,c,o]=await Promise.all([
       supabase.from('products').select('*,category:categories(nom,slug,emoji)').eq('vendeur_id',user.id).order('created_at',{ascending:false}),
       supabase.from('categories').select('*').order('display_order'),
+      supabase.from('orders').select('*').eq('vendeur_id',user.id).order('created_at',{ascending:false}),
     ]);
-    setProducts(p.data||[]);setCategories(c.data||[]);
+    setProducts(p.data||[]);setCategories(c.data||[]);setVendOrders(o.data||[]);
   },[user.id]);
 
   useEffect(()=>{load();},[load]);
@@ -1512,18 +1542,27 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
         </div>
       </div>
     )}
-    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px',flexWrap:'wrap',gap:'16px'}}>
+    {/* Onglets dashboard vendeur */}
+    <div style={{display:'flex',gap:'8px',marginBottom:'28px',borderBottom:'1px solid var(--glass-border)',paddingBottom:'0'}}>
+      {[{id:'products',l:'📦 Mes produits'},{id:'orders',l:'🚚 Commandes reçues',badge:vendOrders.filter(o=>o.status==='confirme').length||null}].map(t=>(
+        <button key={t.id} onClick={()=>setVendTab(t.id)} style={{padding:'10px 18px',background:'none',border:'none',borderBottom:`2px solid ${vendTab===t.id?'var(--emerald)':'transparent'}`,color:vendTab===t.id?'var(--emerald-glow)':'var(--muted)',fontWeight:600,fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'6px',transition:'all .2s'}}>
+          {t.l}{t.badge?<span style={{background:'#ef4444',color:'#fff',borderRadius:'99px',fontSize:'11px',fontWeight:700,padding:'1px 6px'}}>{t.badge}</span>:null}
+        </button>
+      ))}
+    </div>
+
+    {vendTab==='products'&&<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px',flexWrap:'wrap',gap:'16px'}}>
       <div>
         <h2 className="sec-h" style={{marginBottom:'4px'}}>Ma boutique</h2>
-        <div style={{color:'var(--muted)',fontSize:'14px'}}>{products.length} produit{products.length>1?'s':''} actif{products.length>1?'s':''}</div>
+        <div style={{color:'var(--muted)',fontSize:'14px'}}>{products.length} produit{products.length>1?'s':''}</div>
       </div>
       {kycApproved
         ?<Btn onClick={openNew}>+ Nouveau produit</Btn>
         :<Btn v="glass" style={{opacity:.5,cursor:'not-allowed'}} title="Vérification d'identité requise">🔒 Nouveau produit</Btn>
       }
-    </div>
+    </div>}
 
-    {products.length===0&&!editing&&(
+    {vendTab==='products'&&products.length===0&&!editing&&(
       <div className="glass" style={{padding:'48px',textAlign:'center'}}>
         <div style={{fontSize:'48px',marginBottom:'12px'}}>📦</div>
         <div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucun produit pour l'instant</div>
@@ -1532,7 +1571,7 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
       </div>
     )}
 
-    {products.length>0&&(
+    {vendTab==='products'&&products.length>0&&(
       <div className="pgrid">
         {products.map(p=>(
           <article key={p.id} className="pcard">
@@ -1556,7 +1595,39 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
       </div>
     )}
 
-    {editing&&(
+    {vendTab==='orders'&&(
+      <div>
+        <h2 className="sec-h" style={{marginBottom:'16px'}}>Commandes reçues</h2>
+        {vendOrders.length===0&&<div className="glass" style={{padding:'48px',textAlign:'center'}}><div style={{fontSize:'48px',marginBottom:'12px'}}>🚚</div><div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucune commande</div><div style={{color:'var(--muted)'}}>Les commandes de vos produits apparaîtront ici.</div></div>}
+        {vendOrders.map(o=>(
+          <div key={o.id} className="glass" style={{padding:'16px',borderRadius:'var(--r-lg)',marginBottom:'12px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:'8px',marginBottom:'8px'}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:'15px'}}>{o.product_nom}</div>
+                <div style={{color:'var(--muted)',fontSize:'13px'}}>Réf. {o.id} · {o.created_at?.slice(0,10)} · {o.pay_method}</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                <span style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(Number(o.montant))}</span>
+                <span style={{padding:'3px 10px',borderRadius:'999px',fontSize:'12px',fontWeight:600,background:'var(--glass-emerald)',color:'var(--emerald-glow)',border:'1px solid rgba(20,123,99,0.3)'}}>{o.status}</span>
+              </div>
+            </div>
+            {o.delivery_lat?(
+              <div style={{marginTop:'8px'}}>
+                <div style={{fontSize:'13px',color:'var(--muted)',marginBottom:'6px'}}>📍 <strong style={{color:'var(--emerald-glow)'}}>Adresse de livraison :</strong> {o.delivery_address||`${Number(o.delivery_lat).toFixed(5)}, ${Number(o.delivery_lng).toFixed(5)}`}</div>
+                <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                  <a href={`https://www.google.com/maps?q=${o.delivery_lat},${o.delivery_lng}`} target="_blank" rel="noopener noreferrer" style={{padding:'5px 12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-pill)',fontSize:'12px',color:'var(--text)',textDecoration:'none'}}>🗺️ Voir sur Google Maps</a>
+                  <a href={`https://waze.com/ul?ll=${o.delivery_lat},${o.delivery_lng}&navigate=yes`} target="_blank" rel="noopener noreferrer" style={{padding:'5px 12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-pill)',fontSize:'12px',color:'var(--text)',textDecoration:'none'}}>🧭 Waze</a>
+                </div>
+              </div>
+            ):(
+              <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'6px'}}>📍 Localisation non disponible — contactez l'acheteur pour l'adresse.</div>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
+
+    {vendTab==='products'&&editing&&(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)cancel();}}>
         <div className="modal" style={{maxWidth:'620px'}}>
           <div className="modal-title">{editing==='new'?'Nouveau produit':'Modifier le produit'}</div>
