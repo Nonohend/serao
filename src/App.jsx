@@ -1428,19 +1428,19 @@ function PageProfil({user,showToast,refreshUser,nav}){
 
       if(avatarFile){
         const ext=avatarFile.name.split('.').pop();
-        const path=`products/${user.id}/avatar.${ext}`;
-        const{error:e}=await supabase.storage.from('product-photos').upload(path,avatarFile,{upsert:true,contentType:avatarFile.type});
+        const path=`products/${user.id}/avatar_${Date.now()}.${ext}`;
+        const{error:e}=await supabase.storage.from('product-photos').upload(path,avatarFile,{contentType:avatarFile.type});
         if(e){showToast('Upload avatar échoué : '+e.message,'err');setBusy(false);return;}
         const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
-        avatar_url=data.publicUrl+'?t='+Date.now();
+        avatar_url=data.publicUrl;
       }
       if(bannerFile){
         const ext=bannerFile.name.split('.').pop();
-        const path=`products/${user.id}/banner.${ext}`;
-        const{error:e}=await supabase.storage.from('product-photos').upload(path,bannerFile,{upsert:true,contentType:bannerFile.type});
+        const path=`products/${user.id}/banner_${Date.now()}.${ext}`;
+        const{error:e}=await supabase.storage.from('product-photos').upload(path,bannerFile,{contentType:bannerFile.type});
         if(e){showToast('Upload bannière échoué : '+e.message,'err');setBusy(false);return;}
         const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
-        shop_banner_url=data.publicUrl+'?t='+Date.now();
+        shop_banner_url=data.publicUrl;
       }
 
       const updates={nom:form.nom,bio:form.bio,region:form.region,avatar_url,shop_name:form.shop_name,shop_description:form.shop_description,shop_banner_url,updated_at:new Date().toISOString()};
