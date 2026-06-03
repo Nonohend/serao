@@ -1428,21 +1428,26 @@ function PageProfil({user,showToast,refreshUser,nav}){
 
       if(avatarFile){
         const ext=avatarFile.name.split('.').pop();
-        const path=`avatars/${user.id}.${ext}`;
+        const path=`avatars/${user.id}/avatar.${ext}`;
         const{error:e}=await supabase.storage.from('product-photos').upload(path,avatarFile,{upsert:true,contentType:avatarFile.type});
-        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);avatar_url=data.publicUrl+'?t='+Date.now();}
+        if(e){showToast('Upload avatar échoué : '+e.message,'err');setBusy(false);return;}
+        const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
+        avatar_url=data.publicUrl+'?t='+Date.now();
       }
       if(bannerFile){
         const ext=bannerFile.name.split('.').pop();
-        const path=`banners/${user.id}.${ext}`;
+        const path=`avatars/${user.id}/banner.${ext}`;
         const{error:e}=await supabase.storage.from('product-photos').upload(path,bannerFile,{upsert:true,contentType:bannerFile.type});
-        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);shop_banner_url=data.publicUrl+'?t='+Date.now();}
+        if(e){showToast('Upload bannière échoué : '+e.message,'err');setBusy(false);return;}
+        const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
+        shop_banner_url=data.publicUrl+'?t='+Date.now();
       }
 
       const updates={nom:form.nom,bio:form.bio,region:form.region,avatar_url,shop_name:form.shop_name,shop_description:form.shop_description,shop_banner_url,updated_at:new Date().toISOString()};
       const{error}=await supabase.from('profiles').update(updates).eq('id',user.id);
       if(error)throw error;
       if(form.tel){await supabase.from('profiles').update({tel:form.tel}).eq('id',user.id);}
+      setProfile(p=>({...p,...updates}));
       showToast('Profil mis à jour ✓');
       setEditing(false);
       setAvatarFile(null);setBannerFile(null);
