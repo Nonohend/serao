@@ -65,7 +65,7 @@
   --shadow-card:0 10px 30px rgba(31,138,91,0.12);
   --shadow-float:0 20px 50px rgba(31,138,91,0.16);
   /* === Nav === */
-  --nav-h:64px;
+  --nav-h:52px;
 }
 
 /* ═══ THÈME SOMBRE — restaure la palette néon d'origine ═══ */
@@ -200,7 +200,7 @@ body{
 .nav-logo{cursor:pointer;user-select:none;display:flex;align-items:center;transition:opacity .2s;}
 .nav-logo:hover{opacity:.85;}
 .brand-logo-img{display:block;object-fit:contain;user-select:none;filter:drop-shadow(0 1px 4px rgba(20,123,99,0.18));}
-.nav-logo-img{height:44px;width:auto;}
+.nav-logo-img{height:44px;width:auto;margin-top:-4px;}
 .footer-logo-img{height:208px;width:auto;}
 .auth-logo-img{width:clamp(160px,60%,260px);height:auto;margin:0 auto 4px;}
 .navlinks{display:flex;gap:4px;flex:1;}
