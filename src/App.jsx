@@ -1743,15 +1743,19 @@ function SupportBot({onClose, user}){
         contents:[...history,{role:'user',parts:[{text}]}],
         generationConfig:{temperature:0.7,maxOutputTokens:400,topP:0.9},
       };
-      const res=await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
-        {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}
-      );
+      const MODELS=['gemini-2.0-flash','gemini-1.5-flash','gemini-pro'];
+      let res=null;
+      for(const model of MODELS){
+        res=await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+          {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}
+        );
+        if(res.ok||res.status!==404) break;
+      }
       if(!res.ok){
         const errBody=await res.json().catch(()=>({}));
         const msg=errBody?.error?.message||'Erreur '+res.status;
-        if(res.status===400||res.status===403||res.status===404) throw new Error('Clé API invalide — vérifie le secret VITE_GEMINI_API_KEY sur GitHub (doit commencer par AIzaSy...)');
-        throw new Error(msg);
+        throw new Error('Erreur Gemini ('+res.status+'): '+msg);
       }
       const data=await res.json();
       const reply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Désolé, je n\'ai pas pu répondre.';
