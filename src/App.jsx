@@ -1676,7 +1676,7 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
   </div>);
 }
 
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const AI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const SERAO_CONTEXT = `Tu es l'assistant virtuel de SERAO, une marketplace premium de produits authentiques de Madagascar.
 Réponds toujours en français (ou en malagasy si le client écrit en malagasy). Sois concis, chaleureux et professionnel.
 
@@ -1733,32 +1733,32 @@ function SupportBot({onClose, user}){
     setMsgs(m=>[...m,userMsg]);
     setLoading(true);
     try{
-      if(!GEMINI_KEY) throw new Error('Clé API Gemini non configurée');
-      const history=msgs.filter(m=>m.role!=='model'||msgs.indexOf(m)>0).map(m=>({
-        role:m.role==='model'?'model':'user',
-        parts:[{text:m.text}]
+      if(!AI_KEY) throw new Error('Clé API non configurée');
+      const history=msgs.map(m=>({
+        role:m.role==='model'?'assistant':'user',
+        content:m.text
       }));
       const body={
-        system_instruction:{parts:[{text:SERAO_CONTEXT}]},
-        contents:[...history,{role:'user',parts:[{text}]}],
-        generationConfig:{temperature:0.7,maxOutputTokens:400,topP:0.9},
+        model:'llama-3.3-70b-versatile',
+        messages:[
+          {role:'system',content:SERAO_CONTEXT},
+          ...history,
+          {role:'user',content:text}
+        ],
+        temperature:0.7,
+        max_tokens:400,
       };
-      const MODELS=['gemini-2.0-flash','gemini-1.5-flash','gemini-pro'];
-      let res=null;
-      for(const model of MODELS){
-        res=await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
-          {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}
-        );
-        if(res.ok||res.status!==404) break;
-      }
+      const res=await fetch(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+AI_KEY},body:JSON.stringify(body)}
+      );
       if(!res.ok){
         const errBody=await res.json().catch(()=>({}));
         const msg=errBody?.error?.message||'Erreur '+res.status;
-        throw new Error('Erreur Gemini ('+res.status+'): '+msg);
+        throw new Error('Erreur IA ('+res.status+'): '+msg);
       }
       const data=await res.json();
-      const reply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Désolé, je n\'ai pas pu répondre.';
+      const reply=data?.choices?.[0]?.message?.content||'Désolé, je n\'ai pas pu répondre.';
       setMsgs(m=>[...m,{role:'model',text:reply}]);
     }catch(ex){
       setMsgs(m=>[...m,{role:'model',text:'❌ '+ex.message+'\nVeuillez réessayer ou contacter le support.'}]);
