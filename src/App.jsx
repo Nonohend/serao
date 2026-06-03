@@ -1428,7 +1428,7 @@ function PageProfil({user,showToast,refreshUser,nav}){
 
       if(avatarFile){
         const ext=avatarFile.name.split('.').pop();
-        const path=`avatars/${user.id}/avatar.${ext}`;
+        const path=`products/${user.id}/avatar.${ext}`;
         const{error:e}=await supabase.storage.from('product-photos').upload(path,avatarFile,{upsert:true,contentType:avatarFile.type});
         if(e){showToast('Upload avatar échoué : '+e.message,'err');setBusy(false);return;}
         const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
@@ -1436,7 +1436,7 @@ function PageProfil({user,showToast,refreshUser,nav}){
       }
       if(bannerFile){
         const ext=bannerFile.name.split('.').pop();
-        const path=`avatars/${user.id}/banner.${ext}`;
+        const path=`products/${user.id}/banner.${ext}`;
         const{error:e}=await supabase.storage.from('product-photos').upload(path,bannerFile,{upsert:true,contentType:bannerFile.type});
         if(e){showToast('Upload bannière échoué : '+e.message,'err');setBusy(false);return;}
         const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
