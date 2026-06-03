@@ -435,8 +435,16 @@ function ChatWindow({user,onClose}){
   const lastMsgAt=useRef(null);
 
   useEffect(()=>{
-    document.body.style.overflow='hidden';
-    return()=>{document.body.style.overflow='';};
+    const y=window.scrollY;
+    document.body.style.position='fixed';
+    document.body.style.top=`-${y}px`;
+    document.body.style.width='100%';
+    return()=>{
+      document.body.style.position='';
+      document.body.style.top='';
+      document.body.style.width='';
+      window.scrollTo(0,y);
+    };
   },[]);
 
   // Initial load: profiles + messages
@@ -1790,8 +1798,16 @@ function SupportBot({onClose, user}){
   const inputRef=useRef();
 
   useEffect(()=>{
-    document.body.style.overflow='hidden';
-    return()=>{document.body.style.overflow='';};
+    const y=window.scrollY;
+    document.body.style.position='fixed';
+    document.body.style.top=`-${y}px`;
+    document.body.style.width='100%';
+    return()=>{
+      document.body.style.position='';
+      document.body.style.top='';
+      document.body.style.width='';
+      window.scrollTo(0,y);
+    };
   },[]);
 
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
