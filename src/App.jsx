@@ -1366,6 +1366,436 @@ function PageConfidentialite(){
   ]}/>;
 }
 
+/* ─ STAR RATING ─ */
+function StarRating({value=0,max=5,size=18,onChange=null,count=null}){
+  const [hover,setHover]=useState(0);
+  const v=hover||Math.round(value);
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:'3px'}}>
+      {Array.from({length:max},(_,i)=>(
+        <span key={i}
+          onClick={()=>onChange&&onChange(i+1)}
+          onMouseEnter={()=>onChange&&setHover(i+1)}
+          onMouseLeave={()=>setHover(0)}
+          style={{fontSize:size,cursor:onChange?'pointer':'default',color:i<v?'#f59e0b':'rgba(255,255,255,0.15)',transition:'transform .1s, color .1s',display:'inline-block',transform:onChange&&hover===i+1?'scale(1.25)':'scale(1)',lineHeight:1}}
+        >★</span>
+      ))}
+      {count!==null&&<span style={{fontSize:13,color:'var(--muted)',marginLeft:5}}>{count>0?`${Number(value).toFixed(1)} (${count})`:count===0?'Pas encore noté':''}</span>}
+    </div>
+  );
+}
+
+/* ─ PAGE PROFIL ─ */
+function PageProfil({user,showToast,refreshUser,nav}){
+  const[profile,setProfile]=useState(null);
+  const[ratings,setRatings]=useState([]);
+  const[products,setProducts]=useState([]);
+  const[editing,setEditing]=useState(false);
+  const[form,setForm]=useState({});
+  const[avatarFile,setAvatarFile]=useState(null);
+  const[bannerFile,setBannerFile]=useState(null);
+  const[busy,setBusy]=useState(false);
+  const[ratingForm,setRatingForm]=useState({show:false,targetId:null,targetNom:'',note:0,commentaire:''});
+  const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const load=useCallback(async()=>{
+    if(!user)return;
+    const[p,r,pr]=await Promise.all([
+      supabase.rpc('get_public_profile',{p_user_id:user.id}).maybeSingle(),
+      supabase.from('user_ratings').select('*').eq('evalue_id',user.id).order('created_at',{ascending:false}).limit(20),
+      supabase.from('products').select('*,category:categories(nom)').eq('vendeur_id',user.id).eq('active',true).order('created_at',{ascending:false}).limit(8),
+    ]);
+    if(p.data)setProfile(p.data);
+    setRatings(r.data||[]);
+    setProducts(pr.data||[]);
+  },[user]);
+
+  useEffect(()=>{load();},[load]);
+
+  const startEdit=()=>{
+    setForm({
+      nom:profile?.nom||'',bio:profile?.bio||'',region:profile?.region||'',tel:'',
+      shop_name:profile?.shop_name||'',shop_description:profile?.shop_description||'',
+    });
+    setEditing(true);
+  };
+
+  const save=async()=>{
+    setBusy(true);
+    try{
+      let avatar_url=profile?.avatar_url;
+      let shop_banner_url=profile?.shop_banner_url;
+
+      if(avatarFile){
+        const ext=avatarFile.name.split('.').pop();
+        const path=`avatars/${user.id}.${ext}`;
+        const{error:e}=await supabase.storage.from('product-photos').upload(path,avatarFile,{upsert:true,contentType:avatarFile.type});
+        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);avatar_url=data.publicUrl;}
+      }
+      if(bannerFile){
+        const ext=bannerFile.name.split('.').pop();
+        const path=`banners/${user.id}.${ext}`;
+        const{error:e}=await supabase.storage.from('product-photos').upload(path,bannerFile,{upsert:true,contentType:bannerFile.type});
+        if(!e){const{data}=supabase.storage.from('product-photos').getPublicUrl(path);shop_banner_url=data.publicUrl;}
+      }
+
+      const updates={nom:form.nom,bio:form.bio,region:form.region,avatar_url,shop_name:form.shop_name,shop_description:form.shop_description,shop_banner_url,updated_at:new Date().toISOString()};
+      const{error}=await supabase.from('profiles').update(updates).eq('id',user.id);
+      if(error)throw error;
+      if(form.tel){await supabase.from('profiles').update({tel:form.tel}).eq('id',user.id);}
+      showToast('Profil mis à jour ✓');
+      setEditing(false);
+      setAvatarFile(null);setBannerFile(null);
+      await load();
+      refreshUser?.();
+    }catch(ex){showToast(ex.message,'err');}
+    finally{setBusy(false);}
+  };
+
+  const submitRating=async()=>{
+    if(!ratingForm.note){showToast('Sélectionne une note','err');return;}
+    const{error}=await supabase.rpc('submit_user_rating',{p_evalue_id:ratingForm.targetId,p_note:ratingForm.note,p_commentaire:ratingForm.commentaire||null});
+    if(error){showToast(error.message,'err');return;}
+    showToast('Note envoyée ✓');
+    setRatingForm({show:false,targetId:null,targetNom:'',note:0,commentaire:''});
+    await load();
+  };
+
+  if(!user)return(<div className="page-hero"><div className="wrap"><h1>Profil</h1><p>Connectez-vous pour accéder à votre profil.</p></div></div>);
+  if(!profile)return(<div style={{textAlign:'center',padding:'60px',color:'var(--muted)'}}>Chargement...</div>);
+
+  const isVendeur=profile.role==='vendeur';
+  const avatarPreview=avatarFile?URL.createObjectURL(avatarFile):profile.avatar_url;
+  const bannerPreview=bannerFile?URL.createObjectURL(bannerFile):profile.shop_banner_url;
+
+  return(
+    <div>
+      {/* Banner */}
+      <div style={{height:'180px',background:bannerPreview?`url(${bannerPreview}) center/cover`:'linear-gradient(135deg,rgba(20,123,99,0.4),rgba(6,214,176,0.1))',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,transparent 60%,rgba(6,10,16,0.9))'}}/>
+        {editing&&isVendeur&&<label style={{position:'absolute',bottom:12,right:16,background:'rgba(0,0,0,0.6)',color:'#fff',padding:'6px 14px',borderRadius:'var(--r-pill)',fontSize:'13px',cursor:'pointer',backdropFilter:'blur(8px)'}}>📷 Bannière<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setBannerFile(e.target.files[0]);e.target.value='';}}/></label>}
+      </div>
+
+      <section className="section" style={{paddingTop:0}}>
+        <div className="wrap" style={{maxWidth:'720px'}}>
+          {/* Avatar + infos */}
+          <div style={{display:'flex',alignItems:'flex-end',gap:'20px',marginTop:'-56px',marginBottom:'24px',flexWrap:'wrap'}}>
+            <div style={{position:'relative',flexShrink:0}}>
+              <div style={{width:100,height:100,borderRadius:'50%',background:avColor(profile.nom||'?'),border:'4px solid rgba(6,10,16,1)',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'36px',fontWeight:700}}>
+                {avatarPreview?<img src={avatarPreview} alt={profile.nom} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:initials(profile.nom||'?')}
+              </div>
+              {editing&&<label style={{position:'absolute',bottom:0,right:0,width:28,height:28,background:'var(--emerald)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',border:'2px solid rgba(6,10,16,1)',fontSize:'14px'}}>📷<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setAvatarFile(e.target.files[0]);e.target.value='';}}/></label>}
+            </div>
+            <div style={{flex:1,minWidth:'200px',paddingBottom:'8px'}}>
+              {editing?(
+                <input className="fi" value={form.nom} onChange={e=>setF('nom',e.target.value)} style={{fontSize:'20px',fontWeight:700,marginBottom:'8px'}} placeholder="Votre nom"/>
+              ):(
+                <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'4px'}}>{profile.nom}</div>
+              )}
+              <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
+                <span style={{padding:'3px 10px',borderRadius:'999px',fontSize:'12px',fontWeight:700,background:'var(--glass-emerald)',color:'var(--emerald-glow)',border:'1px solid rgba(20,123,99,0.3)'}}>{profile.role}</span>
+                {profile.region&&<span style={{fontSize:'13px',color:'var(--muted)'}}>📍 {profile.region}</span>}
+                {profile.verified&&<span style={{fontSize:'12px',color:'var(--emerald-glow)'}}>✅ Vérifié</span>}
+              </div>
+              {profile.rating_count>0&&<div style={{marginTop:'6px'}}><StarRating value={profile.rating_avg} count={profile.rating_count} size={16}/></div>}
+            </div>
+            {!editing&&<Btn sm v="glass" onClick={startEdit}>✏️ Modifier</Btn>}
+          </div>
+
+          {editing?(
+            <div className="glass" style={{padding:'24px',borderRadius:'var(--r-xl)',marginBottom:'24px'}}>
+              <div style={{display:'grid',gap:'16px'}}>
+                <div className="fg"><label className="fl">Bio</label><textarea className="fi" rows="3" value={form.bio} onChange={e=>setF('bio',e.target.value)} placeholder="Parlez de vous..."/></div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+                  <div className="fg"><label className="fl">Région</label><input className="fi" value={form.region} onChange={e=>setF('region',e.target.value)} placeholder="ex: Antananarivo"/></div>
+                  <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.tel} onChange={e=>setF('tel',e.target.value)} placeholder="+261 34..."/></div>
+                </div>
+                {isVendeur&&<>
+                  <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'16px',fontWeight:700,color:'var(--text)',fontSize:'15px'}}>🏪 Ma boutique</div>
+                  <div className="fg"><label className="fl">Nom de la boutique</label><input className="fi" value={form.shop_name} onChange={e=>setF('shop_name',e.target.value)} placeholder="ex: Vanille de Sava"/></div>
+                  <div className="fg"><label className="fl">Description</label><textarea className="fi" rows="3" value={form.shop_description} onChange={e=>setF('shop_description',e.target.value)} placeholder="Décrivez votre boutique..."/></div>
+                </>}
+              </div>
+              <div className="modal-foot" style={{marginTop:'20px',paddingTop:'16px',borderTop:'1px solid var(--glass-border)'}}>
+                <Btn v="glass" onClick={()=>setEditing(false)} disabled={busy}>Annuler</Btn>
+                <Btn onClick={save} disabled={busy}>{busy?'Enregistrement...':'Sauvegarder'}</Btn>
+              </div>
+            </div>
+          ):(
+            <>
+              {profile.bio&&<div className="glass" style={{padding:'16px',borderRadius:'var(--r-lg)',marginBottom:'20px',fontSize:'14px',color:'var(--muted)',lineHeight:1.6}}>{profile.bio}</div>}
+              {isVendeur&&profile.shop_name&&(
+                <div className="glass" style={{padding:'20px',borderRadius:'var(--r-xl)',marginBottom:'20px'}}>
+                  <div style={{fontWeight:700,fontSize:'16px',marginBottom:'6px'}}>🏪 {profile.shop_name}</div>
+                  {profile.shop_description&&<div style={{fontSize:'14px',color:'var(--muted)',lineHeight:1.6}}>{profile.shop_description}</div>}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Produits du vendeur */}
+          {isVendeur&&products.length>0&&!editing&&(
+            <div style={{marginBottom:'28px'}}>
+              <h3 className="sec-h" style={{fontSize:'18px',marginBottom:'16px'}}>Mes produits</h3>
+              <div className="pgrid" style={{gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))'}}>
+                {products.map(p=>(
+                  <article key={p.id} className="pcard" style={{cursor:'default'}}>
+                    <div className="pcard-img">{p.image_url?<img src={p.image_url} alt={p.nom} className="pcard-photo" loading="lazy"/>:<div className="pcard-emo">{p.emoji}</div>}</div>
+                    <div className="pcard-body">
+                      <div className="pcard-meta">{p.category?.nom||''}</div>
+                      <div className="pcard-name">{p.nom}</div>
+                      <div className="pcard-price">{fmt(p.prix)}</div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes reçues */}
+          {!editing&&(
+            <div>
+              <h3 className="sec-h" style={{fontSize:'18px',marginBottom:'16px'}}>Avis reçus ({ratings.length})</h3>
+              {ratings.length===0&&<div className="glass" style={{padding:'28px',textAlign:'center',color:'var(--muted)',fontSize:'14px',borderRadius:'var(--r-xl)'}}>Aucun avis pour l'instant.</div>}
+              {ratings.map(r=>(
+                <div key={r.id} className="glass" style={{padding:'14px',borderRadius:'var(--r-lg)',marginBottom:'10px'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
+                    <StarRating value={r.note} size={15}/>
+                    <span style={{fontSize:'12px',color:'var(--muted)'}}>{r.created_at?.slice(0,10)} · {r.context}</span>
+                  </div>
+                  {r.commentaire&&<div style={{fontSize:'14px',color:'var(--muted)',lineHeight:1.5}}>{r.commentaire}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Modal notation */}
+      {ratingForm.show&&(
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setRatingForm(f=>({...f,show:false}));}}>
+          <div className="modal" style={{maxWidth:'400px'}}>
+            <div className="modal-title">⭐ Noter {ratingForm.targetNom}</div>
+            <div style={{marginBottom:'20px',textAlign:'center'}}><StarRating value={ratingForm.note} size={36} onChange={n=>setRatingForm(f=>({...f,note:n}))}/></div>
+            <div className="fg"><label className="fl">Commentaire (optionnel)</label><textarea className="fi" rows="3" value={ratingForm.commentaire} onChange={e=>setRatingForm(f=>({...f,commentaire:e.target.value}))} placeholder="Votre avis..."/></div>
+            <div className="modal-foot">
+              <Btn v="glass" onClick={()=>setRatingForm(f=>({...f,show:false}))}>Annuler</Btn>
+              <Btn onClick={submitRating}>Envoyer</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─ PAGE MESSAGES (Messenger-style) ─ */
+function PageMessages({user,showToast}){
+  const[active,setActive]=useState({type:'channel',id:'general',name:'# Général',sub:'Discussion générale'});
+  const[mobileView,setMobileView]=useState('list'); // 'list' | 'conv'
+  const[msgs,setMsgs]=useState([]);
+  const[users,setUsers]=useState([]);
+  const[input,setInput]=useState('');
+  const[search,setSearch]=useState('');
+  const[sending,setSending]=useState(false);
+  const[menuFor,setMenuFor]=useState(null);
+  const bottomRef=useRef();
+  const inputRef=useRef();
+  const lastMsgAt=useRef(null);
+
+  useEffect(()=>{
+    let mounted=true;
+    (async()=>{
+      const[p,m]=await Promise.all([
+        supabase.from('profiles').select('id,nom,role'),
+        supabase.from('messages').select('*').order('created_at',{ascending:true}).limit(500),
+      ]);
+      if(!mounted)return;
+      setUsers(p.data||[]);
+      const init=m.data||[];
+      setMsgs(init);
+      if(init.length)lastMsgAt.current=init[init.length-1].created_at;
+    })();
+    return()=>{mounted=false;};
+  },[]);
+
+  useEffect(()=>{
+    const ch=supabase.channel('serao-msgs-page')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},p=>{
+        setMsgs(prev=>prev.some(m=>m.id===p.new.id)?prev:[...prev,p.new]);
+      })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'messages'},p=>{
+        setMsgs(prev=>prev.filter(m=>m.id!==p.old.id));
+      })
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
+  useEffect(()=>{
+    const id=setInterval(async()=>{
+      let q=supabase.from('messages').select('*').order('created_at',{ascending:true});
+      if(lastMsgAt.current)q=q.gt('created_at',lastMsgAt.current);
+      const{data}=await q.limit(50);
+      if(data?.length){lastMsgAt.current=data[data.length-1].created_at;setMsgs(prev=>{const ids=new Set(prev.map(m=>m.id));return[...prev,...data.filter(m=>!ids.has(m.id))];});}
+    },5000);
+    return()=>clearInterval(id);
+  },[]);
+
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'});},[msgs,active]);
+
+  const threadMsgs=msgs.filter(m=>active.type==='channel'?m.channel===active.id:(m.from_user===user?.id&&m.to_user===active.id)||(m.from_user===active.id&&m.to_user===user?.id));
+  const since=localStorage.getItem('serao_lastseen_'+user?.id)||'1970-01-01T00:00:00Z';
+  const unread=(target)=>msgs.filter(m=>{
+    if(m.from_user===user?.id)return false;
+    const inT=target.type==='channel'?m.channel===target.id:(m.from_user===target.id&&m.to_user===user?.id);
+    return inT&&m.created_at>since;
+  }).length;
+  const lastMsg=(id,type)=>{
+    const ms=msgs.filter(m=>type==='channel'?m.channel===id:(m.from_user===id&&m.to_user===user?.id)||(m.from_user===user?.id&&m.to_user===id));
+    const l=ms[ms.length-1];return l?l.content.slice(0,32)+(l.content.length>32?'…':''):'';
+  };
+
+  const send=async()=>{
+    if(!input.trim()||sending||!user)return;
+    setSending(true);
+    const text=input.trim();setInput('');
+    const payload={from_user:user.id,content:text,...(active.type==='channel'?{channel:active.id,to_user:null}:{to_user:active.id,channel:null})};
+    const{error}=await supabase.from('messages').insert(payload);
+    if(error){setInput(text);}
+    setSending(false);
+    inputRef.current?.focus();
+  };
+
+  const selectConv=t=>{
+    setActive(t);
+    setMobileView('conv');
+    try{localStorage.setItem('serao_lastseen_'+user?.id,new Date().toISOString());}catch{}
+  };
+
+  const getUser=id=>users.find(u=>u.id===id)||{nom:'?',id};
+  const channels=PUB_CHANNELS.filter(c=>!search||c.name.toLowerCase().includes(search.toLowerCase()));
+  const dms=users.filter(u=>u.id!==user?.id&&(!search||u.nom?.toLowerCase().includes(search.toLowerCase())));
+
+  // Group messages by sender for Messenger-like display
+  const grouped=[];let lastDay='',lastFrom='';
+  threadMsgs.forEach(m=>{
+    const ts=m.created_at||m.ts;
+    const day=fmtD(ts);
+    if(day!==lastDay){grouped.push({type:'sep',day});lastDay=day;lastFrom='';}
+    grouped.push({type:'msg',...m,_ts:ts,_from:m.from_user||m.from,_showAv:lastFrom!==(m.from_user||m.from)});
+    lastFrom=m.from_user||m.from;
+  });
+
+  if(!user)return(<div className="page-hero"><div className="wrap"><h1>Messages</h1><p>Connectez-vous pour accéder aux messages.</p></div></div>);
+
+  return(
+    <div className="msg-page">
+      {/* Sidebar */}
+      <div className={`msg-sidebar${mobileView==='conv'?' msg-mob-hidden':''}`}>
+        <div className="msg-sidebar-head">
+          <div className="msg-sidebar-title">Messages</div>
+          <input className="chat-search" placeholder="Rechercher..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>
+        <div className="msg-convlist">
+          {channels.length>0&&<>
+            <div className="chat-sec-label">Canaux publics</div>
+            {channels.map(c=>{
+              const t={type:'channel',id:c.id,name:c.name,sub:c.desc};
+              const u=unread(t);
+              return(
+                <div key={c.id} className={`msg-conv-item${active.id===c.id&&active.type==='channel'?' on':''}`} onClick={()=>selectConv(t)}>
+                  <div className="msg-conv-av" style={{background:'var(--glass-emerald)',fontSize:'18px'}}>{c.icon}</div>
+                  <div className="msg-conv-info">
+                    <div className="msg-conv-name">{c.name}</div>
+                    <div className="msg-conv-prev">{lastMsg(c.id,'channel')||c.desc}</div>
+                  </div>
+                  {u>0&&<div className="msg-conv-badge">{u}</div>}
+                </div>
+              );
+            })}
+          </>}
+          {dms.length>0&&<>
+            <div className="chat-sec-label">Messages directs</div>
+            {dms.map(u=>{
+              const t={type:'dm',id:u.id,name:u.nom,sub:u.role};
+              const unr=unread(t);
+              return(
+                <div key={u.id} className={`msg-conv-item${active.id===u.id&&active.type==='dm'?' on':''}`} onClick={()=>selectConv(t)}>
+                  <div className="msg-conv-av" style={{background:avColor(u.nom||'?'),fontSize:'13px',fontWeight:700}}>{initials(u.nom||'?')}</div>
+                  <div className="msg-conv-info">
+                    <div className="msg-conv-name">{u.nom}</div>
+                    <div className="msg-conv-prev">{lastMsg(u.id,'dm')||u.role}</div>
+                  </div>
+                  {unr>0&&<div className="msg-conv-badge">{unr}</div>}
+                </div>
+              );
+            })}
+          </>}
+        </div>
+      </div>
+
+      {/* Main conversation */}
+      <div className={`msg-main${mobileView==='list'?' msg-mob-hidden':''}`}>
+        {/* Header */}
+        <div className="msg-conv-hdr">
+          <button className="msg-back-btn" onClick={()=>setMobileView('list')}>←</button>
+          <div className="msg-conv-av-sm" style={{background:active.type==='channel'?'var(--glass-emerald)':avColor(active.name||'?'),fontSize:active.type==='channel'?'16px':'12px',fontWeight:700}}>
+            {active.type==='channel'?PUB_CHANNELS.find(c=>c.id===active.id)?.icon||'💬':initials(active.name||'?')}
+          </div>
+          <div>
+            <div style={{fontWeight:700,fontSize:'15px'}}>{active.name}</div>
+            <div style={{fontSize:'12px',color:'var(--muted)'}}>{active.sub}</div>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="msg-msgs">
+          {grouped.map((item,i)=>{
+            if(item.type==='sep')return(<div key={i} className="chat-date-sep"><span>{item.day}</span></div>);
+            const mine=item._from===user?.id;
+            const sender=getUser(item._from);
+            return(
+              <div key={item.id||i} className={`msg-row${mine?' mine':''}`}>
+                {!mine&&item._showAv&&<div className="msg-av" style={{background:avColor(sender.nom||'?'),color:'var(--text)'}}>{initials(sender.nom||'?')}</div>}
+                {!mine&&!item._showAv&&<div style={{width:28,flexShrink:0}}/>}
+                <div className="msg-bubbles">
+                  {!mine&&item._showAv&&<div className="msg-sender">{sender.nom}</div>}
+                  <div className={`bubble ${mine?'bubble-mine':'bubble-them'}`} onDoubleClick={()=>setMenuFor(menuFor===item.id?null:item.id)}>
+                    {item.content}
+                    {menuFor===item.id&&(mine||user?.role==='admin')&&(
+                      <div style={{marginTop:'6px',display:'flex',gap:'6px'}}>
+                        <button onClick={async()=>{await supabase.from('messages').delete().eq('id',item.id);setMenuFor(null);}} style={{fontSize:'11px',background:'rgba(239,68,68,0.2)',border:'1px solid rgba(239,68,68,0.4)',color:'#fca5a5',borderRadius:'var(--r-pill)',padding:'2px 8px',cursor:'pointer'}}>Supprimer</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="msg-time">{fmtT(item._ts)}</div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef}/>
+        </div>
+
+        {/* Input */}
+        <div className="msg-input-row">
+          <textarea
+            ref={inputRef}
+            className="msg-input"
+            rows="1"
+            value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+            placeholder={`Message ${active.name}...`}
+          />
+          <button className="chat-send" onClick={send} disabled={sending||!input.trim()}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─ COMMANDES ─ */
 function PageCommandes({orders}){
   const STATUS_COLOR={confirme:'#60a5fa',preparation:'#fb923c',expedie:'#a78bfa',transit:'#22d3ee',livre:'#4ade80',annule:'#f87171'};
@@ -2200,6 +2630,8 @@ function App(){
               </div>
               {userMenu&&<div className="user-dropdown">
                 <div className="u-drop-item" onClick={()=>{setShowChat(true);setUserMenu(false);}}>💬 Mes messages{unread>0&&` (${unread})`}</div>
+                <div className="u-drop-item" onClick={()=>{nav('profil');setUserMenu(false);}}>👤 Mon profil</div>
+                <div className="u-drop-item" onClick={()=>{nav('messages');setUserMenu(false);}}>💬 Messages</div>
                 <div className="u-drop-item" onClick={()=>{nav('commandes');setUserMenu(false);}}>📦 Mes commandes</div>
                 {user.role==='vendeur'&&<div className="u-drop-item" onClick={()=>{nav('vendeur');setUserMenu(false);}}>🏪 Ma boutique</div>}
                 <div className="u-drop-sep"/>
@@ -2251,17 +2683,18 @@ function App(){
     {page==='confidentialite'&&<PageConfidentialite/>}
     {page==='vendeur'   &&<PageVendeur user={user} showToast={showToast} setShowAuth={setShowAuth} refreshUser={refreshUser} refreshProducts={refreshProducts}/>}
     {page==='commandes' &&<PageCommandes orders={orders}/>}
+    {page==='messages'  &&<PageMessages user={user} showToast={showToast}/>}
+    {page==='profil'    &&<PageProfil user={user} showToast={showToast} refreshUser={refreshUser} nav={nav}/>}
 
     <Footer nav={nav}/>
 
     {/* BOTTOM NAV MOBILE */}
     <div className="bottom-nav">
       <div className="bnav-items">
-        {[{id:'accueil',icon:'🏠',l:'Accueil'},{id:'catalogue',icon:'🛍️',l:'Catalogue'},{id:'livraison',icon:'📦',l:'Livraison'},{id:'chat',icon:'💬',l:'Chat'},{id:'profil',icon:'👤',l:'Profil'}].map(b=>(
+        {[{id:'accueil',icon:'🏠',l:'Accueil'},{id:'catalogue',icon:'🛍️',l:'Catalogue'},{id:'messages',icon:'💬',l:'Messages'},{id:'profil',icon:'👤',l:'Profil'},{id:'commandes',icon:'📦',l:'Commandes'}].map(b=>(
           <div key={b.id} className={'bnav-item'+(page===b.id?' on':'')} onClick={()=>{
-            if(b.id==='chat'){if(user)setShowChat(s=>!s);else setShowAuth(true);}
-            else if(b.id==='profil'){if(user)setMenu(m=>!m);else setShowAuth(true);}
-            else nav(b.id);
+            if((b.id==='messages'||b.id==='profil'||b.id==='commandes')&&!user){setShowAuth(true);return;}
+            nav(b.id);
           }}>
             <div className="bnav-icon">{b.icon}</div>
             <div className="bnav-label">{b.l}</div>
