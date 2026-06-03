@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS public.user_ratings (
   evalue_id      uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   note           integer     NOT NULL CHECK (note BETWEEN 1 AND 5),
   commentaire    text,
-  order_id       uuid        REFERENCES public.orders(id) ON DELETE SET NULL,
+  order_id       text        REFERENCES public.orders(id) ON DELETE SET NULL,
   context        text        NOT NULL DEFAULT 'vendeur'
                              CHECK (context IN ('vendeur','acheteur')),
   created_at     timestamptz NOT NULL DEFAULT now(),
@@ -116,7 +116,7 @@ CREATE OR REPLACE FUNCTION public.submit_user_rating(
   p_evalue_id   uuid,
   p_note        integer,
   p_commentaire text    DEFAULT NULL,
-  p_order_id    uuid    DEFAULT NULL,
+  p_order_id    text    DEFAULT NULL,
   p_context     text    DEFAULT 'vendeur'
 )
 RETURNS uuid
@@ -137,7 +137,7 @@ BEGIN
   RETURN v_id;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION public.submit_user_rating(uuid, integer, text, uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_user_rating(uuid, integer, text, text, text) TO authenticated;
 
 -- =============================================
 -- DONE
