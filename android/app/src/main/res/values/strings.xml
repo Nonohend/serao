@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SERAO</string>
+    <string name="title_activity_main">SERAO</string>
+    <string name="package_name">mg.serao.app</string>
+    <string name="custom_url_scheme">mg.serao.app</string>
+</resources>
