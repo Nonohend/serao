@@ -1,0 +1,20 @@
+{
+  "appId": "mg.serao.app",
+  "appName": "SERAO",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#EEF4F1",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#1F8A5B"
+    }
+  }
+}
