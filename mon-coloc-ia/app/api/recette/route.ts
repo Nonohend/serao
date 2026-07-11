@@ -1,5 +1,5 @@
-import { google } from '@ai-sdk/google';
 import { generateText } from 'ai';
+import { modeleGemini } from '@/lib/ia';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { joursAvantPeremption } from '@/lib/calculs';
@@ -57,7 +57,7 @@ export async function POST() {
     .join('\n');
 
   const { text } = await generateText({
-    model: google('gemini-2.5-flash'),
+    model: modeleGemini(),
     system: `Tu es un chef anti-gaspillage. Tu proposes UNE recette réalisable uniquement avec les ingrédients fournis (des basiques comme sel, poivre, huile, eau sont autorisés).
 Équipement disponible : ${equipements.join(', ') || 'aucun (recette sans cuisson exigée)'}.
 Énergie de l'utilisateur ce soir : ${p?.niveau_energie_soir ?? 3}/5 (adapte le temps de préparation en conséquence).

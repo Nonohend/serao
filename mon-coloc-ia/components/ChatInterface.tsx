@@ -1,6 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
+import type { Message } from 'ai';
 import { useRef, useState, useEffect } from 'react';
 
 const LIBELLE_OUTIL: Record<string, string> = {
@@ -8,14 +9,67 @@ const LIBELLE_OUTIL: Record<string, string> = {
   enregistrerDepense: '💸 Enregistrement de la dépense…',
 };
 
+// Clé de sauvegarde locale de la conversation (sur l'appareil).
+const CLE_STOCKAGE = 'mon-coloc-ia-conversation';
+const MAX_MESSAGES_SAUVEGARDES = 60;
+
 export default function ChatInterface() {
   const [modeRoast, setModeRoast] = useState(false);
+  const [restaure, setRestaure] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { messages, input, handleInputChange, handleSubmit, status, error } =
-    useChat({
-      api: '/api/chat',
-    });
+  const {
+    messages,
+    setMessages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    status,
+    error,
+  } = useChat({
+    api: '/api/chat',
+  });
+
+  // Restaure la conversation sauvegardée (survit aux rechargements et aux
+  // changements d'onglet).
+  useEffect(() => {
+    try {
+      const brut = window.localStorage.getItem(CLE_STOCKAGE);
+      if (brut) {
+        const anciens = JSON.parse(brut) as Message[];
+        if (Array.isArray(anciens) && anciens.length > 0) {
+          setMessages(anciens);
+        }
+      }
+    } catch {
+      // Sauvegarde corrompue : on repart d'une conversation vide.
+    }
+    setRestaure(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sauvegarde la conversation à chaque évolution (une fois restaurée,
+  // pour ne pas écraser l'historique avec une liste vide au montage).
+  useEffect(() => {
+    if (!restaure) return;
+    try {
+      window.localStorage.setItem(
+        CLE_STOCKAGE,
+        JSON.stringify(messages.slice(-MAX_MESSAGES_SAUVEGARDES)),
+      );
+    } catch {
+      // Stockage plein ou indisponible : non bloquant.
+    }
+  }, [messages, restaure]);
+
+  function effacerConversation() {
+    setMessages([]);
+    try {
+      window.localStorage.removeItem(CLE_STOCKAGE);
+    } catch {
+      // Non bloquant.
+    }
+  }
 
   const enCours = status === 'submitted' || status === 'streaming';
 
@@ -39,23 +93,35 @@ export default function ChatInterface() {
             Décris une dépense, demande une recette ou un prix…
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModeRoast((v) => !v)}
-          className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${
-            modeRoast
-              ? 'border-rose-400/40 bg-rose-500/20 text-rose-300'
-              : 'border-white/10 bg-white/5 text-slate-400'
-          }`}
-          aria-pressed={modeRoast}
-        >
-          <span
-            className={`h-2 w-2 rounded-full ${
-              modeRoast ? 'bg-rose-400' : 'bg-slate-500'
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={effacerConversation}
+              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-400 transition hover:text-white"
+              title="Effacer la conversation"
+            >
+              🗑️
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setModeRoast((v) => !v)}
+            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${
+              modeRoast
+                ? 'border-rose-400/40 bg-rose-500/20 text-rose-300'
+                : 'border-white/10 bg-white/5 text-slate-400'
             }`}
-          />
-          Mode Roast
-        </button>
+            aria-pressed={modeRoast}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                modeRoast ? 'bg-rose-400' : 'bg-slate-500'
+              }`}
+            />
+            Mode Roast
+          </button>
+        </div>
       </div>
 
       {/* Fil de discussion */}

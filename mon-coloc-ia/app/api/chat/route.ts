@@ -1,5 +1,5 @@
-import { google } from '@ai-sdk/google';
 import { streamText, tool } from 'ai';
+import { modeleGemini } from '@/lib/ia';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { arrondiVirtuel, formaterMontant } from '@/lib/calculs';
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     .single();
 
   const result = streamText({
-    model: google('gemini-2.5-flash'),
+    model: modeleGemini(),
     system: construireSystemPrompt(profil as ProfilUtilisateur | null, modeRoast),
     messages,
     maxSteps: 5,

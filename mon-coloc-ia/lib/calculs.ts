@@ -27,13 +27,15 @@ export function depensesDuMois(depenses: Depense[], reference = new Date()): Dep
 }
 
 /**
- * Calcule l'arrondi virtuel d'un montant : différence avec l'euro supérieur.
- * 3.40 → 0.60 ; 10.00 → 0.00 (déjà rond, aucune mise en cagnotte).
+ * Calcule l'arrondi virtuel d'un montant en Ariary : différence avec le
+ * millier d'Ar supérieur. 12 500 Ar → 500 Ar ; 10 000 Ar → 0 Ar (déjà rond,
+ * aucune mise en cagnotte).
  */
-export function arrondiVirtuel(montant: number): number {
-  const superieur = Math.ceil(montant);
+export function arrondiVirtuel(montant: number, pas = 1000): number {
+  if (montant <= 0) return 0;
+  const superieur = Math.ceil(montant / pas) * pas;
   const diff = superieur - montant;
-  // Corrige les imprécisions de flottant (ex : 0.5999999999).
+  // Corrige les imprécisions de flottant.
   return Math.round(diff * 100) / 100;
 }
 
