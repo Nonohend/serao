@@ -1,4 +1,4 @@
-import { anthropic } from '@ai-sdk/anthropic';
+import { google } from '@ai-sdk/google';
 import { streamText, tool } from 'ai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     .single();
 
   const result = streamText({
-    model: anthropic('claude-opus-4-8'),
+    model: google('gemini-2.0-flash'),
     system: construireSystemPrompt(profil as ProfilUtilisateur | null, modeRoast),
     messages,
     maxSteps: 5,

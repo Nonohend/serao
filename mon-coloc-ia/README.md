@@ -3,7 +3,7 @@
 Outil **mobile-first** de gestion de budget, de lutte contre le gaspillage et
 d'aide à la consommation. Design **glassmorphism** optimisé pour le Dark Mode.
 
-Stack : **Next.js 14 (App Router) · Supabase · Vercel AI SDK (Claude) · Tailwind CSS**.
+Stack : **Next.js 14 (App Router) · Supabase · Vercel AI SDK (Google Gemini) · Tailwind CSS**.
 
 ## Fonctionnalités
 
@@ -40,7 +40,7 @@ mon-coloc-ia/
 1. **Installer** : `npm install`
 2. **Base de données** : coller `supabase/migration.sql` dans Supabase → SQL Editor → Run.
 3. **Variables d'environnement** : copier `.env.example` vers `.env.local` et
-   renseigner les clés (Supabase, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `CRON_SECRET`).
+   renseigner les clés (Supabase, `GOOGLE_GENERATIVE_AI_API_KEY`, `TAVILY_API_KEY`, `CRON_SECRET`).
 4. **Lancer** : `npm run dev` → http://localhost:3000
 
 ## Calculs clés (`lib/calculs.ts`)
@@ -56,4 +56,4 @@ Le fichier `vercel.json` déclare un **Cron Job** quotidien (20h) appelant
 `/api/cron/daily-report`. Protéger l'endpoint avec `CRON_SECRET` et, en option,
 renseigner `DAILY_REPORT_WEBHOOK_URL` (Slack/Discord) pour l'envoi réel des bilans.
 
-> Le modèle Claude par défaut est `claude-opus-4-8` via `@ai-sdk/anthropic`.
+> Le modèle par défaut est `gemini-2.0-flash` via `@ai-sdk/google` (offre gratuite).

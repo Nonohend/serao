@@ -54,8 +54,10 @@ CREATE INDEX IF NOT EXISTS idx_inventaire_statut ON public.inventaire_courses(st
 
 -- -----------------------------------------------------------------------------
 -- 4) Création automatique du profil à l'inscription
+-- Noms suffixés « _coloc » pour ne JAMAIS entrer en collision avec d'autres
+-- projets partageant la même base (ex : un trigger on_auth_user_created existant).
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user_coloc()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
@@ -68,10 +70,10 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created_coloc ON auth.users;
+CREATE TRIGGER on_auth_user_created_coloc
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user_coloc();
 
 -- -----------------------------------------------------------------------------
 -- 5) Row Level Security — chaque utilisateur ne voit que ses propres données
