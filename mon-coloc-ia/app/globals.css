@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply text-slate-100 antialiased;
+  min-height: 100dvh;
+  background-color: #0a0a12;
+  background-image:
+    radial-gradient(1000px circle at 15% 10%, rgba(124, 92, 255, 0.18), transparent 45%),
+    radial-gradient(900px circle at 85% 20%, rgba(56, 189, 248, 0.14), transparent 45%),
+    radial-gradient(1100px circle at 50% 100%, rgba(236, 72, 153, 0.12), transparent 50%);
+  background-attachment: fixed;
+}
+
+@layer components {
+  /* Carte transparente givrée — cœur de l'esthétique glassmorphism. */
+  .glass {
+    @apply rounded-2.5xl border border-white/10 bg-white/[0.05] shadow-glass backdrop-blur-xl;
+  }
+
+  .glass-soft {
+    @apply rounded-2xl border border-white/10 bg-white/[0.04] shadow-glass-sm backdrop-blur-lg;
+  }
+
+  .glass-input {
+    @apply w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3
+           text-slate-100 placeholder-slate-400 outline-none backdrop-blur
+           transition focus:border-accent-soft/60 focus:bg-white/[0.09];
+  }
+
+  .glass-button {
+    @apply rounded-xl border border-white/10 bg-white/[0.08] px-4 py-3 font-medium
+           text-slate-100 backdrop-blur transition
+           hover:bg-white/[0.14] active:scale-[0.98] disabled:opacity-40;
+  }
+
+  .glass-button-accent {
+    @apply rounded-xl border border-accent-soft/30 bg-accent/80 px-4 py-3 font-semibold
+           text-white shadow-lg shadow-accent/30 backdrop-blur transition
+           hover:bg-accent active:scale-[0.98] disabled:opacity-40;
+  }
+
+  .nav-pill {
+    @apply flex flex-1 flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs
+           text-slate-400 transition;
+  }
+
+  .nav-pill-active {
+    @apply bg-white/10 text-white;
+  }
+}
+
+/* Barre de défilement discrète et cohérente avec le thème sombre. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

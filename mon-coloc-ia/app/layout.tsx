@@ -1,0 +1,31 @@
+import type { Metadata, Viewport } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'Mon Coloc IA',
+  description:
+    'Budget, anti-gaspillage et aide à la consommation — ton coloc virtuel intelligent.',
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0a0a12',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="fr" className="dark">
+      <body>
+        <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col">
+          {children}
+        </div>
+      </body>
+    </html>
+  );
+}
