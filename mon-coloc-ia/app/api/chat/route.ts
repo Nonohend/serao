@@ -2,7 +2,7 @@ import { google } from '@ai-sdk/google';
 import { streamText, tool } from 'ai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { arrondiVirtuel } from '@/lib/calculs';
+import { arrondiVirtuel, formaterMontant } from '@/lib/calculs';
 import type { ProfilUtilisateur } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -26,7 +26,7 @@ function construireSystemPrompt(profil: ProfilUtilisateur | null, modeRoast: boo
   const base = `Tu es "Mon Coloc IA", l'assistant personnel de gestion de budget, d'anti-gaspillage et d'aide à la consommation de l'utilisateur.
 
 PROFIL DE L'UTILISATEUR :
-- Budget mensuel cible : ${budget} €
+- Budget mensuel cible : ${budget} Ar (Ariary, la monnaie de Madagascar)
 - Équipement de cuisine disponible : ${listeEquipements}
 - Rythme de vie : ${profil?.rythme_de_vie ?? 'non précisé'}
 - Niveau d'énergie le soir (1 = épuisé, 5 = en forme) : ${energie}/5
@@ -34,7 +34,7 @@ PROFIL DE L'UTILISATEUR :
 RÈGLES :
 - Adapte TOUJOURS tes conseils et recettes à l'équipement réellement disponible. S'il n'a pas de frigo, ne propose rien qui doive être conservé au froid. S'il n'a pas de plaques, propose des repas sans cuisson.
 - Tiens compte de son énergie du soir : s'il est épuisé (1-2/5), propose des solutions ultra-rapides (< 10 min).
-- Quand l'utilisateur mentionne une dépense en langage naturel (ex : "50€ de courses à l'épicerie", "15€ de resto"), utilise l'outil "enregistrerDepense" pour la créer. Déduis la catégorie, le montant et une description courte. Pour les courses alimentaires, remplis aussi la liste des produits pour peupler l'inventaire du frigo.
+- Tous les montants sont en Ariary (Ar). Quand l'utilisateur mentionne une dépense en langage naturel (ex : "50 000 Ar de courses à l'épicerie", "15 000 Ar de resto"), utilise l'outil "enregistrerDepense" pour la créer. Déduis la catégorie, le montant et une description courte. Pour les courses alimentaires, remplis aussi la liste des produits pour peupler l'inventaire du frigo.
 - Quand l'utilisateur demande des prix réels, des promotions locales, ou des informations d'actualité, utilise l'outil "rechercheWeb".
 - Réponds en français, de façon concise et actionnable.`;
 
@@ -106,6 +106,9 @@ export async function POST(req: Request) {
     system: construireSystemPrompt(profil as ProfilUtilisateur | null, modeRoast),
     messages,
     maxSteps: 5,
+    onError: ({ error }) => {
+      console.error('[api/chat] streamText error:', error);
+    },
     tools: {
       rechercheWeb: tool({
         description:
@@ -119,36 +122,43 @@ export async function POST(req: Request) {
         description:
           "Enregistre une dépense de l'utilisateur. Pour les courses alimentaires, fournis aussi les produits achetés afin de peupler l'inventaire du frigo.",
         parameters: z.object({
-          montant: z.number().describe('Montant de la dépense en euros.'),
+          montant: z.number().describe('Montant de la dépense en Ariary (Ar).'),
           categorie: z
             .string()
             .describe('Catégorie, ex : Courses, Restaurant, Transport, Loisirs, Abonnement.'),
-          description: z.string().optional().describe('Courte description libre.'),
+          description: z
+            .string()
+            .describe('Courte description libre (chaîne vide si rien à préciser).'),
           est_gaspillage: z
             .boolean()
-            .optional()
-            .describe('true si cette dépense est clairement un gaspillage assumé.'),
+            .describe('true si cette dépense est clairement un gaspillage assumé, sinon false.'),
           produits: z
-            .array(
-              z.object({
-                nom_produit: z.string(),
-                jours_conservation_estimes: z
-                  .number()
-                  .describe('Durée de conservation estimée en jours.'),
-              }),
-            )
-            .optional()
-            .describe('Produits alimentaires achetés (pour peupler l\'inventaire).'),
+            .array(z.string())
+            .describe(
+              "Noms des produits alimentaires achetés, pour peupler l'inventaire du frigo (liste vide si aucun).",
+            ),
+          jours_conservation: z
+            .array(z.number())
+            .describe(
+              'Durée de conservation estimée en jours pour chaque produit, dans le même ordre que "produits" (liste vide si aucun).',
+            ),
         }),
-        execute: async ({ montant, categorie, description, est_gaspillage, produits }) => {
+        execute: async ({
+          montant,
+          categorie,
+          description,
+          est_gaspillage,
+          produits,
+          jours_conservation,
+        }) => {
           const { data: depense, error } = await supabase
             .from('depenses')
             .insert({
               user_id: user.id,
               montant,
               categorie,
-              description: description ?? null,
-              est_gaspillage: est_gaspillage ?? false,
+              description: description || null,
+              est_gaspillage: est_gaspillage,
               montant_arrondi_virtuel: arrondiVirtuel(montant),
             })
             .select()
@@ -160,11 +170,12 @@ export async function POST(req: Request) {
 
           let nbProduits = 0;
           if (produits && produits.length > 0) {
-            const lignes = produits.map((p) => ({
+            const lignes = produits.map((nom, i) => ({
               user_id: user.id,
               depense_id: depense.id,
-              nom_produit: p.nom_produit,
-              jours_conservation_estimes: p.jours_conservation_estimes,
+              nom_produit: nom,
+              jours_conservation_estimes:
+                jours_conservation && jours_conservation[i] ? jours_conservation[i] : 5,
               statut: 'en_stock',
             }));
             const { error: invError } = await supabase
@@ -174,7 +185,7 @@ export async function POST(req: Request) {
           }
 
           const arrondi = arrondiVirtuel(montant);
-          return `Dépense enregistrée : ${montant.toFixed(2)} € (${categorie}). Arrondi virtuel ajouté à la cagnotte : ${arrondi.toFixed(2)} €.${
+          return `Dépense enregistrée : ${formaterMontant(montant)} (${categorie}). Arrondi virtuel ajouté à la cagnotte : ${formaterMontant(arrondi)}.${
             nbProduits ? ` ${nbProduits} produit(s) ajouté(s) à l'inventaire du frigo.` : ''
           }`;
         },
@@ -182,5 +193,10 @@ export async function POST(req: Request) {
     },
   });
 
-  return result.toDataStreamResponse();
+  return result.toDataStreamResponse({
+    getErrorMessage: (error) => {
+      if (error instanceof Error) return error.message;
+      return String(error);
+    },
+  });
 }

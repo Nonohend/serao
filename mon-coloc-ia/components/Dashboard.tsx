@@ -8,7 +8,7 @@ import {
   compteurDeLaHonte,
   couleurBurnRate,
   depensesDuMois,
-  formaterEuros,
+  formaterMontant,
 } from '@/lib/calculs';
 import type { BurnRate, Depense, ProfilUtilisateur } from '@/lib/types';
 
@@ -52,7 +52,7 @@ export default function Dashboard() {
     charger();
   }, [charger]);
 
-  const budget = profil?.budget_mensuel_cible ?? 1000;
+  const budget = profil?.budget_mensuel_cible ?? 500000;
   const burn = calculerBurnRate(depenses, budget);
   const cagnotte = cagnotteArrondis(depensesDuMois(depenses));
   const honte = compteurDeLaHonte(depensesDuMois(depenses));
@@ -79,7 +79,7 @@ export default function Dashboard() {
           </button>
         </div>
         <p className={`mt-1 text-4xl font-bold tracking-tight ${couleurReste}`}>
-          {chargement ? '…' : formaterEuros(burn.resteADepenser)}
+          {chargement ? '…' : formaterMontant(burn.resteADepenser)}
         </p>
         <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-white/10">
           <div
@@ -95,7 +95,7 @@ export default function Dashboard() {
         </div>
         <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
           <span>
-            {formaterEuros(burn.depensesActuelles)} / {formaterEuros(budget)}
+            {formaterMontant(burn.depensesActuelles)} / {formaterMontant(budget)}
           </span>
           <span className={couleurBurnRate(burn.alerte)}>
             {LIBELLE_ALERTE[burn.alerte]}
@@ -110,14 +110,14 @@ export default function Dashboard() {
           <div>
             <p className="text-xs text-slate-500">Rythme réel</p>
             <p className={`text-xl font-semibold ${couleurBurnRate(burn.alerte)}`}>
-              {formaterEuros(burn.rythmeReel)}
+              {formaterMontant(burn.rythmeReel)}
               <span className="text-sm text-slate-500">/j</span>
             </p>
           </div>
           <div>
             <p className="text-xs text-slate-500">Rythme cible</p>
             <p className="text-xl font-semibold text-slate-200">
-              {formaterEuros(burn.rythmeCible)}
+              {formaterMontant(burn.rythmeCible)}
               <span className="text-sm text-slate-500">/j</span>
             </p>
           </div>
@@ -125,7 +125,7 @@ export default function Dashboard() {
         <p className="mt-3 text-xs text-slate-400">
           Projection fin de mois à ce rythme :{' '}
           <span className={couleurBurnRate(burn.alerte)}>
-            {formaterEuros(burn.projectionFinDeMois)}
+            {formaterMontant(burn.projectionFinDeMois)}
           </span>{' '}
           (jour {burn.joursEcoules}/{burn.joursDansLeMois})
         </p>
@@ -136,7 +136,7 @@ export default function Dashboard() {
         <section className="glass-soft p-4">
           <p className="text-xs text-slate-400">Cagnotte arrondis</p>
           <p className="mt-1 text-2xl font-bold text-sky-300">
-            {formaterEuros(cagnotte)}
+            {formaterMontant(cagnotte)}
           </p>
           <p className="mt-1 text-[11px] text-slate-500">
             épargne indolore ce mois
@@ -146,7 +146,7 @@ export default function Dashboard() {
         <section className="glass-soft p-4">
           <p className="text-xs text-slate-400">Compteur de la honte</p>
           <p className="mt-1 text-2xl font-bold text-rose-400">
-            {formaterEuros(honte)}
+            {formaterMontant(honte)}
           </p>
           <p className="mt-1 text-[11px] text-slate-500">gaspillage assumé</p>
         </section>
@@ -180,7 +180,7 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="ml-3 shrink-0 font-medium text-slate-100">
-                  {formaterEuros(Number(d.montant))}
+                  {formaterMontant(Number(d.montant))}
                 </span>
               </li>
             ))}

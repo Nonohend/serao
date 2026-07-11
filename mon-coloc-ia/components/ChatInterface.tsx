@@ -12,9 +12,10 @@ export default function ChatInterface() {
   const [modeRoast, setModeRoast] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { messages, input, handleInputChange, handleSubmit, status } = useChat({
-    api: '/api/chat',
-  });
+  const { messages, input, handleInputChange, handleSubmit, status, error } =
+    useChat({
+      api: '/api/chat',
+    });
 
   const enCours = status === 'submitted' || status === 'streaming';
 
@@ -63,8 +64,8 @@ export default function ChatInterface() {
           <div className="glass-soft p-4 text-sm text-slate-400">
             <p className="mb-2 text-slate-300">Exemples :</p>
             <ul className="space-y-1 text-slate-400">
-              <li>« 50€ de courses à l&apos;épicerie : poulet, riz, tomates »</li>
-              <li>« 15€ de resto ce midi »</li>
+              <li>« 50 000 Ar de courses à l&apos;épicerie : poulet, riz, tomates »</li>
+              <li>« 15 000 Ar de resto ce midi »</li>
               <li>« Trouve le prix du beurre en promo près de chez moi »</li>
             </ul>
           </div>
@@ -102,6 +103,15 @@ export default function ChatInterface() {
             </div>
           );
         })}
+
+        {error && (
+          <div className="flex justify-start">
+            <div className="max-w-[90%] rounded-2xl border border-rose-400/30 bg-rose-500/15 px-4 py-2.5 text-sm text-rose-200">
+              <p className="font-medium">Le coloc IA n&apos;a pas pu répondre.</p>
+              <p className="mt-1 text-[12px] text-rose-300/90">{error.message}</p>
+            </div>
+          </div>
+        )}
 
         {enCours && (
           <div className="flex justify-start">

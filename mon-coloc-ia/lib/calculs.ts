@@ -127,10 +127,10 @@ export function joursAvantPeremption(
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
 
-/** Formatage monétaire français cohérent dans toute l'app. */
-export function formaterEuros(montant: number): string {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(montant);
+/** Formatage monétaire en Ariary (MGA) — ex : 1 250 000 Ar. */
+export function formaterMontant(montant: number): string {
+  const nombre = new Intl.NumberFormat('fr-FR', {
+    maximumFractionDigits: 0,
+  }).format(Math.round(montant));
+  return `${nombre} Ar`;
 }

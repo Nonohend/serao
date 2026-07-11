@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { arrondiVirtuel, formaterEuros } from '@/lib/calculs';
+import { arrondiVirtuel, formaterMontant } from '@/lib/calculs';
 import type { Depense } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -66,9 +66,9 @@ export async function GET(req: Request) {
     total: Math.round(s.total * 100) / 100,
     gaspillage: Math.round(s.gaspillage * 100) / 100,
     cagnotteArrondisDuJour: Math.round(s.arrondis * 100) / 100,
-    message: `Bilan flash du jour : ${s.nombre} dépense(s) pour ${formaterEuros(
+    message: `Bilan flash du jour : ${s.nombre} dépense(s) pour ${formaterMontant(
       s.total,
-    )}. Gaspillage : ${formaterEuros(s.gaspillage)}. Cagnotte arrondis du jour : ${formaterEuros(
+    )}. Gaspillage : ${formaterMontant(s.gaspillage)}. Cagnotte arrondis du jour : ${formaterMontant(
       s.arrondis,
     )}.`,
   }));

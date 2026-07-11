@@ -12,7 +12,7 @@ const EQUIPEMENTS: { cle: keyof ProfilUtilisateur; label: string; emoji: string 
 ];
 
 const defautProfil: Partial<ProfilUtilisateur> = {
-  budget_mensuel_cible: 1000,
+  budget_mensuel_cible: 500000,
   a_un_frigo: true,
   a_un_congelo: true,
   a_des_plaques: true,
@@ -89,7 +89,7 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
           <input
             type="number"
             min={0}
-            step={10}
+            step={50000}
             value={profil.budget_mensuel_cible ?? 0}
             onChange={(e) =>
               setProfil((p) => ({
@@ -99,7 +99,7 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
             }
             className="glass-input"
           />
-          <span className="text-slate-400">€</span>
+          <span className="text-slate-400">Ar</span>
         </div>
       </section>
 

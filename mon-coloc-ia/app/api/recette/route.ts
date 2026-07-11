@@ -33,7 +33,7 @@ export async function POST() {
   if (items.length === 0) {
     return NextResponse.json({
       recette:
-        "Ton frigo est vide côté inventaire. Ajoute des courses via le chat (ex : « 30€ de courses : poulet, riz, courgettes ») pour que je te concocte une recette.",
+        "Ton frigo est vide côté inventaire. Ajoute des courses via le chat (ex : « 30 000 Ar de courses : poulet, riz, courgettes ») pour que je te concocte une recette.",
     });
   }
 
