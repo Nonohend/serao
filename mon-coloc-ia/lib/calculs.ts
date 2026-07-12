@@ -3,7 +3,7 @@
 // Fonctions pures, testables, sans dépendance à Supabase ou React.
 // =============================================================================
 
-import type { BurnRate, Depense } from './types';
+import type { BurnRate, Depense, FluxTresorerie, Revenu } from './types';
 
 /** Nombre de jours dans le mois d'une date donnée. */
 export function joursDansLeMois(date = new Date()): number {
@@ -127,6 +127,107 @@ export function joursAvantPeremption(
   peremption.setDate(peremption.getDate() + joursConservation);
   const diffMs = peremption.getTime() - maintenant.getTime();
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+}
+
+/** Vrai si la date ISO appartient au mois de la date de référence. */
+export function estDansLeMois(dateIso: string, reference = new Date()): boolean {
+  const t = new Date(dateIso);
+  return (
+    t.getFullYear() === reference.getFullYear() &&
+    t.getMonth() === reference.getMonth()
+  );
+}
+
+/**
+ * Trésorerie adaptée aux revenus irréguliers :
+ *   solde = total des entrées − total des sorties (depuis le début) ;
+ *   runway = combien de jours ce solde tient au rythme de dépense moyen
+ *   des 30 derniers jours.
+ */
+export function calculerFlux(
+  depenses: Depense[],
+  revenus: Revenu[],
+  reference = new Date(),
+): FluxTresorerie {
+  const totalEntrees = revenus.reduce((acc, r) => acc + Number(r.montant), 0);
+  const totalSorties = depenses.reduce((acc, d) => acc + Number(d.montant), 0);
+  const soldeDisponible = Math.round((totalEntrees - totalSorties) * 100) / 100;
+
+  const entreesMois =
+    Math.round(
+      revenus
+        .filter((r) => estDansLeMois(r.date_reception, reference))
+        .reduce((acc, r) => acc + Number(r.montant), 0) * 100,
+    ) / 100;
+  const sortiesMois =
+    Math.round(
+      depenses
+        .filter((d) => estDansLeMois(d.date_transaction, reference))
+        .reduce((acc, d) => acc + Number(d.montant), 0) * 100,
+    ) / 100;
+
+  const ilYA30Jours = new Date(reference);
+  ilYA30Jours.setDate(ilYA30Jours.getDate() - 30);
+  const sorties30j = depenses
+    .filter((d) => new Date(d.date_transaction) >= ilYA30Jours)
+    .reduce((acc, d) => acc + Number(d.montant), 0);
+  const depenseMoyenneJour = Math.round((sorties30j / 30) * 100) / 100;
+
+  const runwayJours =
+    depenseMoyenneJour > 0
+      ? Math.floor(Math.max(0, soldeDisponible) / depenseMoyenneJour)
+      : null;
+
+  let niveau: FluxTresorerie['niveau'] = 'ok';
+  if (soldeDisponible <= 0) niveau = 'critique';
+  else if (runwayJours !== null && runwayJours < 7) niveau = 'critique';
+  else if (runwayJours !== null && runwayJours < 21) niveau = 'attention';
+
+  return {
+    soldeDisponible,
+    entreesMois,
+    sortiesMois,
+    depenseMoyenneJour,
+    runwayJours,
+    niveau,
+  };
+}
+
+/** Total des dépenses par jour sur les N derniers jours (pour le graphique). */
+export function depensesParJour(
+  depenses: Depense[],
+  nbJours = 14,
+  reference = new Date(),
+): { label: string; total: number }[] {
+  const jours: { label: string; total: number }[] = [];
+  for (let i = nbJours - 1; i >= 0; i--) {
+    const jour = new Date(reference);
+    jour.setDate(jour.getDate() - i);
+    const total = depenses
+      .filter((d) => {
+        const t = new Date(d.date_transaction);
+        return (
+          t.getFullYear() === jour.getFullYear() &&
+          t.getMonth() === jour.getMonth() &&
+          t.getDate() === jour.getDate()
+        );
+      })
+      .reduce((acc, d) => acc + Number(d.montant), 0);
+    jours.push({ label: String(jour.getDate()), total });
+  }
+  return jours;
+}
+
+/** Classe de couleur selon le niveau de trésorerie. */
+export function couleurFlux(niveau: FluxTresorerie['niveau']): string {
+  switch (niveau) {
+    case 'critique':
+      return 'text-rose-400';
+    case 'attention':
+      return 'text-amber-400';
+    default:
+      return 'text-emerald-400';
+  }
 }
 
 /** Formatage monétaire en Ariary (MGA) — ex : 1 250 000 Ar. */

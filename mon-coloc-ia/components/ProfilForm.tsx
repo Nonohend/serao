@@ -84,7 +84,13 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
   return (
     <form onSubmit={enregistrer} className="animate-fade-in space-y-4">
       <section className="glass p-5">
-        <label className="text-sm text-slate-300">Budget mensuel cible</label>
+        <label className="text-sm text-slate-300">
+          Objectif de dépenses par mois
+        </label>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Indicatif seulement — tes revenus étant irréguliers, l&apos;app
+          raisonne surtout en solde disponible et jours d&apos;avance.
+        </p>
         <div className="mt-2 flex items-center gap-2">
           <input
             type="number"

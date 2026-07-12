@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 const LIBELLE_OUTIL: Record<string, string> = {
   rechercheWeb: '🔎 Recherche web…',
   enregistrerDepense: '💸 Enregistrement de la dépense…',
+  enregistrerRevenu: '💰 Entrée d’argent enregistrée…',
   enregistrerActivite: '📝 Activité notée…',
 };
 
@@ -195,10 +196,10 @@ export default function ChatInterface() {
           <div className="glass-soft p-4 text-sm text-slate-400">
             <p className="mb-2 text-slate-300">Exemples :</p>
             <ul className="space-y-1 text-slate-400">
+              <li>« J&apos;ai encaissé 200 000 Ar sur une vente » 💰</li>
               <li>« 50 000 Ar de courses : poulet, riz, tomates »</li>
-              <li>« 15 000 Ar de resto ce midi »</li>
               <li>📷 Envoie une photo de ton ticket de caisse</li>
-              <li>« Je suis allé courir ce matin » (activité notée)</li>
+              <li>« Combien de jours d&apos;avance il me reste ? »</li>
             </ul>
           </div>
         )}

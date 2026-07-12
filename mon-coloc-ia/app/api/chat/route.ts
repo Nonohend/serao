@@ -2,8 +2,13 @@ import { convertToCoreMessages, streamText, tool } from 'ai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { modeleGemini } from '@/lib/ia';
-import { arrondiVirtuel, formaterMontant } from '@/lib/calculs';
-import type { Depense, JournalActivite, ProfilUtilisateur } from '@/lib/types';
+import { arrondiVirtuel, calculerFlux, formaterMontant } from '@/lib/calculs';
+import type {
+  Depense,
+  JournalActivite,
+  ProfilUtilisateur,
+  Revenu,
+} from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -14,9 +19,12 @@ export const maxDuration = 30;
 function construireSystemPrompt(
   profil: ProfilUtilisateur | null,
   modeRoast: boolean,
-  dernieresDepenses: Depense[],
+  depenses: Depense[],
+  revenus: Revenu[],
   dernieresActivites: JournalActivite[],
 ): string {
+  const dernieresDepenses = depenses.slice(0, 5);
+  const flux = calculerFlux(depenses, revenus);
   const equipements: string[] = [];
   if (profil?.a_un_frigo) equipements.push('un frigo');
   if (profil?.a_un_congelo) equipements.push('un congélateur');
@@ -47,10 +55,20 @@ function construireSystemPrompt(
   const base = `Tu es "Mon Coloc IA", l'assistant personnel de gestion de budget, d'anti-gaspillage et d'aide à la consommation de l'utilisateur, qui vit à Madagascar.
 
 PROFIL DE L'UTILISATEUR :
-- Budget mensuel cible : ${budget} Ar (Ariary, la monnaie de Madagascar)
+- Revenus IRRÉGULIERS (business) : l'argent rentre parfois chaque jour, parfois rien pendant un mois. Raisonne TOUJOURS en solde disponible et en jours d'avance, jamais en salaire mensuel.
+- Objectif de dépenses mensuel indicatif : ${budget} Ar (Ariary, la monnaie de Madagascar)
 - Équipement de cuisine disponible : ${listeEquipements}
 - Rythme de vie : ${profil?.rythme_de_vie ?? 'non précisé'}
 - Niveau d'énergie le soir (1 = épuisé, 5 = en forme) : ${energie}/5
+
+SITUATION FINANCIÈRE ACTUELLE :
+- Solde disponible : ${formaterMontant(flux.soldeDisponible)}
+- Entrées ce mois : ${formaterMontant(flux.entreesMois)} / Sorties ce mois : ${formaterMontant(flux.sortiesMois)}
+- Rythme de dépense moyen : ${formaterMontant(flux.depenseMoyenneJour)}/jour${
+    flux.runwayJours !== null
+      ? ` (soit ≈ ${flux.runwayJours} jours d'avance)`
+      : ''
+  }
 
 DERNIÈRES DÉPENSES :
 ${resumeDepenses}
@@ -64,7 +82,9 @@ RÈGLES :
 - Tiens compte de son énergie du soir : s'il est épuisé (1-2/5), propose des solutions ultra-rapides (< 10 min).
 - Quand l'utilisateur mentionne une dépense en langage naturel (ex : "50 000 Ar de courses à l'épicerie", "15 000 Ar de resto"), utilise l'outil "enregistrerDepense". Déduis la catégorie, le montant et une description courte. Pour les achats de produits (nourriture, hygiène, ménage…), remplis aussi la liste des produits pour peupler l'inventaire de la maison.
 - Si l'utilisateur envoie une PHOTO (ticket de caisse, courses posées sur la table, produit…), analyse-la : identifie le montant total et les produits achetés, puis enregistre la dépense avec l'outil "enregistrerDepense" en listant les produits reconnus. Si le montant total n'est pas lisible, demande-le.
+- Quand l'utilisateur dit avoir GAGNÉ, ENCAISSÉ ou REÇU de l'argent (ex : "j'ai encaissé 200 000 Ar sur une vente", "un client m'a payé 50 000 Ar"), utilise l'outil "enregistrerRevenu".
 - Quand l'utilisateur raconte ce qu'il fait ou a fait (sortie, sport, cuisine, projet, événement…), note-le avec l'outil "enregistrerActivite" pour t'en souvenir, puis réagis normalement.
+- Félicite les bonnes rentrées, alerte gentiment quand les jours d'avance baissent dangereusement (< 7 jours), et conseille de mettre de côté quand une grosse somme rentre.
 - Quand l'utilisateur demande des prix réels, des promotions locales, ou des informations d'actualité, utilise l'outil "rechercheWeb".
 - Réponds en français, de façon concise et actionnable.`;
 
@@ -127,29 +147,38 @@ export async function POST(req: Request) {
 
   const { messages, modeRoast = false } = await req.json();
 
-  const [{ data: profil }, { data: dernieresDepenses }, { data: dernieresActivites }] =
-    await Promise.all([
-      supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
-      supabase
-        .from('depenses')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date_transaction', { ascending: false })
-        .limit(5),
-      supabase
-        .from('journal_activites')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date_activite', { ascending: false })
-        .limit(5),
-    ]);
+  const [
+    { data: profil },
+    { data: toutesDepenses },
+    { data: tousRevenus },
+    { data: dernieresActivites },
+  ] = await Promise.all([
+    supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
+    supabase
+      .from('depenses')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('date_transaction', { ascending: false }),
+    supabase
+      .from('revenus')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('date_reception', { ascending: false }),
+    supabase
+      .from('journal_activites')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('date_activite', { ascending: false })
+      .limit(5),
+  ]);
 
   const result = streamText({
     model: modeleGemini(),
     system: construireSystemPrompt(
       profil as ProfilUtilisateur | null,
       modeRoast,
-      (dernieresDepenses ?? []) as Depense[],
+      (toutesDepenses ?? []) as Depense[],
+      (tousRevenus ?? []) as Revenu[],
       (dernieresActivites ?? []) as JournalActivite[],
     ),
     messages: convertToCoreMessages(messages),
@@ -246,6 +275,31 @@ export async function POST(req: Request) {
           return `Dépense enregistrée : ${formaterMontant(montant)} (${categorie}). Arrondi virtuel ajouté à la cagnotte : ${formaterMontant(arrondi)}.${
             nbProduits ? ` ${nbProduits} produit(s) ajouté(s) à l'inventaire.` : ''
           }`;
+        },
+      }),
+      enregistrerRevenu: tool({
+        description:
+          "Enregistre une entrée d'argent de l'utilisateur (business, vente, service rendu, salaire ponctuel, cadeau…). Montant en Ariary.",
+        parameters: z.object({
+          montant: z.number().describe("Montant de l'entrée d'argent en Ariary (Ar)."),
+          source: z
+            .string()
+            .describe('Source, ex : Business, Vente, Service, Salaire, Cadeau, Autre.'),
+          description: z
+            .string()
+            .describe('Courte description libre (chaîne vide si rien à préciser).'),
+        }),
+        execute: async ({ montant, source, description }) => {
+          const { error } = await supabase.from('revenus').insert({
+            user_id: user.id,
+            montant,
+            source,
+            description: description || null,
+          });
+          if (error) {
+            return `Impossible d'enregistrer l'entrée d'argent : ${error.message}.`;
+          }
+          return `Entrée d'argent enregistrée : ${formaterMontant(montant)} (${source}).`;
         },
       }),
       enregistrerActivite: tool({

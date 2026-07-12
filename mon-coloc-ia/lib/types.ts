@@ -23,6 +23,26 @@ export interface Depense {
   montant_arrondi_virtuel: number;
 }
 
+export interface Revenu {
+  id: string;
+  user_id: string;
+  montant: number;
+  source: string | null;
+  description: string | null;
+  date_reception: string;
+}
+
+// Photographie de la trésorerie — pensée pour des revenus irréguliers :
+// on raisonne en solde disponible et en jours d'avance, pas en salaire mensuel.
+export interface FluxTresorerie {
+  soldeDisponible: number;
+  entreesMois: number;
+  sortiesMois: number;
+  depenseMoyenneJour: number; // moyenne des 30 derniers jours
+  runwayJours: number | null; // combien de jours le solde tient ; null si aucune dépense récente
+  niveau: 'ok' | 'attention' | 'critique';
+}
+
 export type StatutInventaire = 'en_stock' | 'consomme' | 'gaspille';
 
 export interface InventaireItem {
