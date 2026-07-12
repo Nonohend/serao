@@ -3,7 +3,11 @@ import { modeleGemini } from '@/lib/ia';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { joursAvantPeremption } from '@/lib/calculs';
-import type { InventaireItem, ProfilUtilisateur } from '@/lib/types';
+import {
+  CATEGORIES_ALIMENTAIRES,
+  type InventaireItem,
+  type ProfilUtilisateur,
+} from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -20,20 +24,35 @@ export async function POST() {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   }
 
-  const [{ data: inventaire }, { data: profil }] = await Promise.all([
-    supabase
+  // Seuls les produits alimentaires servent aux recettes. Si la colonne
+  // « categorie » n'existe pas encore (migration v2 non appliquée), on
+  // retombe sur l'inventaire complet.
+  let { data: inventaire, error: invError } = await supabase
+    .from('inventaire_courses')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('statut', 'en_stock')
+    .in('categorie', CATEGORIES_ALIMENTAIRES);
+
+  if (invError) {
+    ({ data: inventaire } = await supabase
       .from('inventaire_courses')
       .select('*')
       .eq('user_id', user.id)
-      .eq('statut', 'en_stock'),
-    supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
-  ]);
+      .eq('statut', 'en_stock'));
+  }
+
+  const { data: profil } = await supabase
+    .from('profil_utilisateur')
+    .select('*')
+    .eq('id', user.id)
+    .single();
 
   const items = (inventaire ?? []) as InventaireItem[];
   if (items.length === 0) {
     return NextResponse.json({
       recette:
-        "Ton frigo est vide côté inventaire. Ajoute des courses via le chat (ex : « 30 000 Ar de courses : poulet, riz, courgettes ») pour que je te concocte une recette.",
+        "Ton inventaire alimentaire est vide. Ajoute des produits avec le bouton « + Ajouter » de l'onglet Stock, ou raconte tes courses au chat (ex : « 30 000 Ar de courses : poulet, riz, courgettes »), et je te concocterai une recette.",
     });
   }
 

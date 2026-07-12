@@ -13,7 +13,7 @@ type Onglet = 'dashboard' | 'chat' | 'frigo' | 'profil';
 const ONGLETS: { cle: Onglet; label: string; emoji: string }[] = [
   { cle: 'dashboard', label: 'Budget', emoji: '📊' },
   { cle: 'chat', label: 'Coloc', emoji: '💬' },
-  { cle: 'frigo', label: 'Frigo', emoji: '🧊' },
+  { cle: 'frigo', label: 'Stock', emoji: '🧺' },
   { cle: 'profil', label: 'Profil', emoji: '⚙️' },
 ];
 
@@ -139,7 +139,7 @@ export default function Page() {
   const titres: Record<Onglet, string> = {
     dashboard: 'Tableau de bord',
     chat: 'Mon Coloc IA',
-    frigo: 'Le frigo',
+    frigo: 'Inventaire de la maison',
     profil: 'Mon profil',
   };
 

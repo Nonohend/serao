@@ -18,11 +18,30 @@ const LIBELLE_ALERTE: Record<BurnRate['alerte'], string> = {
   critique: 'Rythme trop élevé !',
 };
 
+const CATEGORIES_DEPENSE = [
+  'Courses',
+  'Restaurant',
+  'Transport',
+  'Loisirs',
+  'Santé',
+  'Abonnement',
+  'Autre',
+];
+
 export default function Dashboard() {
   const supabase = createClient();
   const [depenses, setDepenses] = useState<Depense[]>([]);
   const [profil, setProfil] = useState<ProfilUtilisateur | null>(null);
   const [chargement, setChargement] = useState(true);
+
+  // Formulaire d'ajout rapide de dépense.
+  const [formOuvert, setFormOuvert] = useState(false);
+  const [montantForm, setMontantForm] = useState('');
+  const [categorieForm, setCategorieForm] = useState('Courses');
+  const [descriptionForm, setDescriptionForm] = useState('');
+  const [gaspillageForm, setGaspillageForm] = useState(false);
+  const [ajoutEnCours, setAjoutEnCours] = useState(false);
+  const [erreurAjout, setErreurAjout] = useState<string | null>(null);
 
   const charger = useCallback(async () => {
     setChargement(true);
@@ -51,6 +70,41 @@ export default function Dashboard() {
   useEffect(() => {
     charger();
   }, [charger]);
+
+  async function ajouterDepense(e: React.FormEvent) {
+    e.preventDefault();
+    const montant = Number(montantForm);
+    if (!Number.isFinite(montant) || montant <= 0) return;
+
+    setAjoutEnCours(true);
+    setErreurAjout(null);
+    try {
+      const res = await fetch('/api/depenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          montant,
+          categorie: categorieForm,
+          description: descriptionForm.trim() || null,
+          est_gaspillage: gaspillageForm,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setErreurAjout(data?.error ?? `Erreur (${res.status}).`);
+      } else {
+        setMontantForm('');
+        setDescriptionForm('');
+        setGaspillageForm(false);
+        setFormOuvert(false);
+        await charger();
+      }
+    } catch {
+      setErreurAjout('Erreur réseau, réessaie.');
+    } finally {
+      setAjoutEnCours(false);
+    }
+  }
 
   const budget = profil?.budget_mensuel_cible ?? 500000;
   const burn = calculerBurnRate(depenses, budget);
@@ -151,6 +205,74 @@ export default function Dashboard() {
           <p className="mt-1 text-[11px] text-slate-500">gaspillage assumé</p>
         </section>
       </div>
+
+      {/* Ajout rapide d'une dépense */}
+      <section className="glass p-4">
+        <button
+          onClick={() => setFormOuvert((v) => !v)}
+          className="flex w-full items-center justify-between text-sm"
+        >
+          <span className="font-medium text-slate-100">
+            ＋ Ajouter une dépense
+          </span>
+          <span className="text-slate-500">{formOuvert ? '▲' : '▼'}</span>
+        </button>
+
+        {formOuvert && (
+          <form onSubmit={ajouterDepense} className="mt-3 space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={montantForm}
+                onChange={(e) => setMontantForm(e.target.value)}
+                placeholder="Montant"
+                className="glass-input flex-1"
+                required
+              />
+              <span className="flex items-center text-slate-400">Ar</span>
+            </div>
+            <select
+              value={categorieForm}
+              onChange={(e) => setCategorieForm(e.target.value)}
+              className="glass-input"
+            >
+              {CATEGORIES_DEPENSE.map((c) => (
+                <option key={c} value={c} className="bg-slate-900">
+                  {c}
+                </option>
+              ))}
+            </select>
+            <input
+              value={descriptionForm}
+              onChange={(e) => setDescriptionForm(e.target.value)}
+              placeholder="Description (optionnel)"
+              className="glass-input"
+            />
+            <button
+              type="button"
+              onClick={() => setGaspillageForm((v) => !v)}
+              className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
+                gaspillageForm
+                  ? 'border-rose-400/40 bg-rose-500/20 text-rose-200'
+                  : 'border-white/10 bg-white/[0.03] text-slate-400'
+              }`}
+            >
+              <span>{gaspillageForm ? '☑' : '☐'}</span>
+              C&apos;était du gaspillage, j&apos;assume 😅
+            </button>
+            {erreurAjout && <p className="text-xs text-rose-300">{erreurAjout}</p>}
+            <button
+              type="submit"
+              disabled={ajoutEnCours}
+              className="glass-button-accent w-full py-2.5 text-sm"
+            >
+              {ajoutEnCours ? 'Enregistrement…' : 'Enregistrer la dépense'}
+            </button>
+          </form>
+        )}
+      </section>
 
       {/* Dernières dépenses */}
       <section className="glass p-5">

@@ -1,16 +1,22 @@
-import { streamText, tool } from 'ai';
-import { modeleGemini } from '@/lib/ia';
+import { convertToCoreMessages, streamText, tool } from 'ai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { modeleGemini } from '@/lib/ia';
 import { arrondiVirtuel, formaterMontant } from '@/lib/calculs';
-import type { ProfilUtilisateur } from '@/lib/types';
+import type { Depense, JournalActivite, ProfilUtilisateur } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-// Construit dynamiquement le system prompt à partir du profil de l'utilisateur,
-// pour que l'IA connaisse son équipement de cuisine et son mode de vie.
-function construireSystemPrompt(profil: ProfilUtilisateur | null, modeRoast: boolean): string {
+// Construit dynamiquement le system prompt à partir du profil de l'utilisateur
+// et de son contexte récent (dépenses, activités), pour que l'IA connaisse
+// son équipement, son mode de vie et ce qu'il a fait dernièrement.
+function construireSystemPrompt(
+  profil: ProfilUtilisateur | null,
+  modeRoast: boolean,
+  dernieresDepenses: Depense[],
+  dernieresActivites: JournalActivite[],
+): string {
   const equipements: string[] = [];
   if (profil?.a_un_frigo) equipements.push('un frigo');
   if (profil?.a_un_congelo) equipements.push('un congélateur');
@@ -21,9 +27,24 @@ function construireSystemPrompt(profil: ProfilUtilisateur | null, modeRoast: boo
     : 'aucun équipement de cuisine déclaré (privilégie des recettes sans cuisson)';
 
   const energie = profil?.niveau_energie_soir ?? 3;
-  const budget = profil?.budget_mensuel_cible ?? 1000;
+  const budget = profil?.budget_mensuel_cible ?? 500000;
 
-  const base = `Tu es "Mon Coloc IA", l'assistant personnel de gestion de budget, d'anti-gaspillage et d'aide à la consommation de l'utilisateur.
+  const resumeDepenses = dernieresDepenses.length
+    ? dernieresDepenses
+        .map(
+          (d) =>
+            `- ${formaterMontant(Number(d.montant))} (${d.categorie}${
+              d.description ? ` : ${d.description}` : ''
+            })`,
+        )
+        .join('\n')
+    : '- aucune dépense enregistrée pour le moment';
+
+  const resumeActivites = dernieresActivites.length
+    ? dernieresActivites.map((a) => `- ${a.description}`).join('\n')
+    : '- aucune activité notée pour le moment';
+
+  const base = `Tu es "Mon Coloc IA", l'assistant personnel de gestion de budget, d'anti-gaspillage et d'aide à la consommation de l'utilisateur, qui vit à Madagascar.
 
 PROFIL DE L'UTILISATEUR :
 - Budget mensuel cible : ${budget} Ar (Ariary, la monnaie de Madagascar)
@@ -31,10 +52,19 @@ PROFIL DE L'UTILISATEUR :
 - Rythme de vie : ${profil?.rythme_de_vie ?? 'non précisé'}
 - Niveau d'énergie le soir (1 = épuisé, 5 = en forme) : ${energie}/5
 
+DERNIÈRES DÉPENSES :
+${resumeDepenses}
+
+DERNIÈRES ACTIVITÉS NOTÉES :
+${resumeActivites}
+
 RÈGLES :
+- Tous les montants sont en Ariary (Ar).
 - Adapte TOUJOURS tes conseils et recettes à l'équipement réellement disponible. S'il n'a pas de frigo, ne propose rien qui doive être conservé au froid. S'il n'a pas de plaques, propose des repas sans cuisson.
 - Tiens compte de son énergie du soir : s'il est épuisé (1-2/5), propose des solutions ultra-rapides (< 10 min).
-- Tous les montants sont en Ariary (Ar). Quand l'utilisateur mentionne une dépense en langage naturel (ex : "50 000 Ar de courses à l'épicerie", "15 000 Ar de resto"), utilise l'outil "enregistrerDepense" pour la créer. Déduis la catégorie, le montant et une description courte. Pour les courses alimentaires, remplis aussi la liste des produits pour peupler l'inventaire du frigo.
+- Quand l'utilisateur mentionne une dépense en langage naturel (ex : "50 000 Ar de courses à l'épicerie", "15 000 Ar de resto"), utilise l'outil "enregistrerDepense". Déduis la catégorie, le montant et une description courte. Pour les achats de produits (nourriture, hygiène, ménage…), remplis aussi la liste des produits pour peupler l'inventaire de la maison.
+- Si l'utilisateur envoie une PHOTO (ticket de caisse, courses posées sur la table, produit…), analyse-la : identifie le montant total et les produits achetés, puis enregistre la dépense avec l'outil "enregistrerDepense" en listant les produits reconnus. Si le montant total n'est pas lisible, demande-le.
+- Quand l'utilisateur raconte ce qu'il fait ou a fait (sortie, sport, cuisine, projet, événement…), note-le avec l'outil "enregistrerActivite" pour t'en souvenir, puis réagis normalement.
 - Quand l'utilisateur demande des prix réels, des promotions locales, ou des informations d'actualité, utilise l'outil "rechercheWeb".
 - Réponds en français, de façon concise et actionnable.`;
 
@@ -83,6 +113,8 @@ async function rechercheTavily(query: string): Promise<string> {
   return `${resume}Sources :\n${sources}`;
 }
 
+const CATEGORIES_VALIDES = ['frigo', 'epicerie', 'hygiene', 'menage', 'autre'];
+
 export async function POST(req: Request) {
   const supabase = createClient();
   const {
@@ -95,16 +127,32 @@ export async function POST(req: Request) {
 
   const { messages, modeRoast = false } = await req.json();
 
-  const { data: profil } = await supabase
-    .from('profil_utilisateur')
-    .select('*')
-    .eq('id', user.id)
-    .single();
+  const [{ data: profil }, { data: dernieresDepenses }, { data: dernieresActivites }] =
+    await Promise.all([
+      supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
+      supabase
+        .from('depenses')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date_transaction', { ascending: false })
+        .limit(5),
+      supabase
+        .from('journal_activites')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date_activite', { ascending: false })
+        .limit(5),
+    ]);
 
   const result = streamText({
     model: modeleGemini(),
-    system: construireSystemPrompt(profil as ProfilUtilisateur | null, modeRoast),
-    messages,
+    system: construireSystemPrompt(
+      profil as ProfilUtilisateur | null,
+      modeRoast,
+      (dernieresDepenses ?? []) as Depense[],
+      (dernieresActivites ?? []) as JournalActivite[],
+    ),
+    messages: convertToCoreMessages(messages),
     maxSteps: 5,
     onError: ({ error }) => {
       console.error('[api/chat] streamText error:', error);
@@ -120,7 +168,7 @@ export async function POST(req: Request) {
       }),
       enregistrerDepense: tool({
         description:
-          "Enregistre une dépense de l'utilisateur. Pour les courses alimentaires, fournis aussi les produits achetés afin de peupler l'inventaire du frigo.",
+          "Enregistre une dépense de l'utilisateur (montant en Ariary). Pour les achats de produits, fournis aussi les produits pour peupler l'inventaire de la maison.",
         parameters: z.object({
           montant: z.number().describe('Montant de la dépense en Ariary (Ar).'),
           categorie: z
@@ -135,12 +183,17 @@ export async function POST(req: Request) {
           produits: z
             .array(z.string())
             .describe(
-              "Noms des produits alimentaires achetés, pour peupler l'inventaire du frigo (liste vide si aucun).",
+              "Noms des produits achetés, pour peupler l'inventaire (liste vide si aucun).",
             ),
           jours_conservation: z
             .array(z.number())
             .describe(
               'Durée de conservation estimée en jours pour chaque produit, dans le même ordre que "produits" (liste vide si aucun).',
+            ),
+          categories_produits: z
+            .array(z.string())
+            .describe(
+              `Catégorie de chaque produit, dans le même ordre que "produits", parmi : ${CATEGORIES_VALIDES.join(', ')} (liste vide si aucun).`,
             ),
         }),
         execute: async ({
@@ -150,6 +203,7 @@ export async function POST(req: Request) {
           est_gaspillage,
           produits,
           jours_conservation,
+          categories_produits,
         }) => {
           const { data: depense, error } = await supabase
             .from('depenses')
@@ -177,6 +231,10 @@ export async function POST(req: Request) {
               jours_conservation_estimes:
                 jours_conservation && jours_conservation[i] ? jours_conservation[i] : 5,
               statut: 'en_stock',
+              categorie:
+                categories_produits && CATEGORIES_VALIDES.includes(categories_produits[i])
+                  ? categories_produits[i]
+                  : 'frigo',
             }));
             const { error: invError } = await supabase
               .from('inventaire_courses')
@@ -186,8 +244,27 @@ export async function POST(req: Request) {
 
           const arrondi = arrondiVirtuel(montant);
           return `Dépense enregistrée : ${formaterMontant(montant)} (${categorie}). Arrondi virtuel ajouté à la cagnotte : ${formaterMontant(arrondi)}.${
-            nbProduits ? ` ${nbProduits} produit(s) ajouté(s) à l'inventaire du frigo.` : ''
+            nbProduits ? ` ${nbProduits} produit(s) ajouté(s) à l'inventaire.` : ''
           }`;
+        },
+      }),
+      enregistrerActivite: tool({
+        description:
+          "Note une activité ou un événement de la vie de l'utilisateur (sortie, sport, cuisine, projet, rendez-vous…) pour t'en souvenir et personnaliser tes conseils.",
+        parameters: z.object({
+          description: z
+            .string()
+            .describe("Description courte de l'activité, ex : « Footing 5 km ce matin »."),
+        }),
+        execute: async ({ description }) => {
+          const { error } = await supabase.from('journal_activites').insert({
+            user_id: user.id,
+            description,
+          });
+          if (error) {
+            return `Impossible de noter l'activité : ${error.message}.`;
+          }
+          return `Activité notée : ${description}`;
         },
       }),
     },

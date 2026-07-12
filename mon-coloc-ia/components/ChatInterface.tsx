@@ -1,22 +1,70 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import type { Message } from 'ai';
-import { useRef, useState, useEffect } from 'react';
+import type { Attachment, Message } from 'ai';
+import { useEffect, useRef, useState } from 'react';
 
 const LIBELLE_OUTIL: Record<string, string> = {
   rechercheWeb: '🔎 Recherche web…',
   enregistrerDepense: '💸 Enregistrement de la dépense…',
+  enregistrerActivite: '📝 Activité notée…',
 };
 
 // Clé de sauvegarde locale de la conversation (sur l'appareil).
 const CLE_STOCKAGE = 'mon-coloc-ia-conversation';
 const MAX_MESSAGES_SAUVEGARDES = 60;
 
+function chargerConversation(): Message[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const brut = window.localStorage.getItem(CLE_STOCKAGE);
+    const anciens = brut ? (JSON.parse(brut) as Message[]) : [];
+    return Array.isArray(anciens) ? anciens : [];
+  } catch {
+    return [];
+  }
+}
+
+// Redimensionne une photo côté téléphone avant envoi (économise la 3G et
+// respecte les limites de l'API). Retourne une data URL JPEG.
+async function compresserImage(fichier: File, maxDim = 1600): Promise<string> {
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const lecteur = new FileReader();
+    lecteur.onload = () => resolve(lecteur.result as string);
+    lecteur.onerror = () => reject(new Error('Lecture du fichier impossible'));
+    lecteur.readAsDataURL(fichier);
+  });
+
+  const img: HTMLImageElement = await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Image illisible'));
+    image.src = dataUrl;
+  });
+
+  const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
+  if (ratio === 1 && fichier.type === 'image/jpeg') return dataUrl;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * ratio));
+  canvas.height = Math.max(1, Math.round(img.height * ratio));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
 export default function ChatInterface() {
   const [modeRoast, setModeRoast] = useState(false);
-  const [restaure, setRestaure] = useState(false);
+  const [monte, setMonte] = useState(false);
+  // La conversation sauvegardée est chargée AVANT le premier rendu, comme
+  // messages initiaux du chat — elle survit aux rechargements et aux
+  // changements d'onglet.
+  const [messagesInitiaux] = useState<Message[]>(chargerConversation);
+  const [pieceJointe, setPieceJointe] = useState<Attachment | null>(null);
+  const [compression, setCompression] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputFichier = useRef<HTMLInputElement>(null);
 
   const {
     messages,
@@ -28,39 +76,32 @@ export default function ChatInterface() {
     error,
   } = useChat({
     api: '/api/chat',
+    initialMessages: messagesInitiaux,
   });
 
-  // Restaure la conversation sauvegardée (survit aux rechargements et aux
-  // changements d'onglet).
+  const enCours = status === 'submitted' || status === 'streaming';
+
   useEffect(() => {
-    try {
-      const brut = window.localStorage.getItem(CLE_STOCKAGE);
-      if (brut) {
-        const anciens = JSON.parse(brut) as Message[];
-        if (Array.isArray(anciens) && anciens.length > 0) {
-          setMessages(anciens);
-        }
-      }
-    } catch {
-      // Sauvegarde corrompue : on repart d'une conversation vide.
-    }
-    setRestaure(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setMonte(true);
   }, []);
 
-  // Sauvegarde la conversation à chaque évolution (une fois restaurée,
-  // pour ne pas écraser l'historique avec une liste vide au montage).
+  // Sauvegarde la conversation à chaque évolution (sans les photos, trop
+  // lourdes pour le stockage local du téléphone).
   useEffect(() => {
-    if (!restaure) return;
+    if (messages.length === 0) return;
     try {
-      window.localStorage.setItem(
-        CLE_STOCKAGE,
-        JSON.stringify(messages.slice(-MAX_MESSAGES_SAUVEGARDES)),
-      );
+      const aSauver = messages
+        .slice(-MAX_MESSAGES_SAUVEGARDES)
+        .map(({ experimental_attachments: _pj, ...reste }) => reste);
+      window.localStorage.setItem(CLE_STOCKAGE, JSON.stringify(aSauver));
     } catch {
       // Stockage plein ou indisponible : non bloquant.
     }
-  }, [messages, restaure]);
+  }, [messages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, monte]);
 
   function effacerConversation() {
     setMessages([]);
@@ -71,26 +112,50 @@ export default function ChatInterface() {
     }
   }
 
-  const enCours = status === 'submitted' || status === 'streaming';
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  async function surSelectionPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const fichier = e.target.files?.[0];
+    if (!fichier) return;
+    setCompression(true);
+    try {
+      const url = await compresserImage(fichier);
+      setPieceJointe({
+        name: fichier.name || 'photo.jpg',
+        contentType: 'image/jpeg',
+        url,
+      });
+    } catch {
+      setPieceJointe(null);
+    } finally {
+      setCompression(false);
+      if (inputFichier.current) inputFichier.current.value = '';
+    }
+  }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!input.trim()) return;
-    handleSubmit(e, { body: { modeRoast } });
+    if (!input.trim() && !pieceJointe) return;
+    handleSubmit(e, {
+      body: { modeRoast },
+      experimental_attachments: pieceJointe ? [pieceJointe] : undefined,
+      allowEmptySubmit: Boolean(pieceJointe),
+    });
+    setPieceJointe(null);
+  }
+
+  // Évite un décalage entre le rendu serveur (conversation vide) et le rendu
+  // téléphone (conversation restaurée) : on n'affiche le chat qu'une fois monté.
+  if (!monte) {
+    return <div className="h-full" />;
   }
 
   return (
     <div className="animate-fade-in flex h-full flex-col">
-      {/* En-tête + interrupteur mode Roast */}
+      {/* En-tête : effacement + interrupteur mode Roast */}
       <div className="glass-soft mb-3 flex items-center justify-between p-3">
         <div>
           <p className="text-sm font-medium text-slate-100">Ton coloc IA</p>
           <p className="text-[11px] text-slate-500">
-            Décris une dépense, demande une recette ou un prix…
+            Dépense, photo de ticket, recette, prix…
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -119,7 +184,7 @@ export default function ChatInterface() {
                 modeRoast ? 'bg-rose-400' : 'bg-slate-500'
               }`}
             />
-            Mode Roast
+            Roast
           </button>
         </div>
       </div>
@@ -130,9 +195,10 @@ export default function ChatInterface() {
           <div className="glass-soft p-4 text-sm text-slate-400">
             <p className="mb-2 text-slate-300">Exemples :</p>
             <ul className="space-y-1 text-slate-400">
-              <li>« 50 000 Ar de courses à l&apos;épicerie : poulet, riz, tomates »</li>
+              <li>« 50 000 Ar de courses : poulet, riz, tomates »</li>
               <li>« 15 000 Ar de resto ce midi »</li>
-              <li>« Trouve le prix du beurre en promo près de chez moi »</li>
+              <li>📷 Envoie une photo de ton ticket de caisse</li>
+              <li>« Je suis allé courir ce matin » (activité notée)</li>
             </ul>
           </div>
         )}
@@ -141,6 +207,10 @@ export default function ChatInterface() {
           const outils =
             (m as { toolInvocations?: { toolName: string }[] }).toolInvocations ??
             [];
+          const images =
+            m.experimental_attachments?.filter((pj) =>
+              pj.contentType?.startsWith('image/'),
+            ) ?? [];
           return (
             <div
               key={m.id}
@@ -155,6 +225,15 @@ export default function ChatInterface() {
                     : 'glass-soft text-slate-100'
                 }`}
               >
+                {images.map((pj, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={i}
+                    src={pj.url}
+                    alt={pj.name ?? 'photo envoyée'}
+                    className="mb-2 max-h-48 w-auto rounded-xl"
+                  />
+                ))}
                 {outils.length > 0 && (
                   <div className="mb-1 space-y-0.5">
                     {outils.map((t, i) => (
@@ -164,7 +243,7 @@ export default function ChatInterface() {
                     ))}
                   </div>
                 )}
-                <p className="whitespace-pre-wrap">{m.content}</p>
+                {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
               </div>
             </div>
           );
@@ -193,8 +272,46 @@ export default function ChatInterface() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Zone de saisie */}
+      {/* Aperçu de la photo sélectionnée */}
+      {pieceJointe && (
+        <div className="mb-2 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.05] p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={pieceJointe.url}
+            alt="Aperçu"
+            className="h-12 w-12 rounded-lg object-cover"
+          />
+          <p className="flex-1 truncate text-xs text-slate-400">
+            Photo prête à envoyer
+          </p>
+          <button
+            type="button"
+            onClick={() => setPieceJointe(null)}
+            className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Zone de saisie : photo + texte */}
       <form onSubmit={onSubmit} className="mt-2 flex items-end gap-2">
+        <input
+          ref={inputFichier}
+          type="file"
+          accept="image/*"
+          onChange={surSelectionPhoto}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => inputFichier.current?.click()}
+          disabled={enCours || compression}
+          className="glass-button shrink-0 px-3"
+          title="Envoyer une photo (ticket de caisse, produit…)"
+        >
+          {compression ? '…' : '📷'}
+        </button>
         <input
           value={input}
           onChange={handleInputChange}
@@ -205,9 +322,9 @@ export default function ChatInterface() {
         <button
           type="submit"
           className="glass-button-accent shrink-0 px-4"
-          disabled={enCours || !input.trim()}
+          disabled={enCours || compression || (!input.trim() && !pieceJointe)}
         >
-          Envoyer
+          ➤
         </button>
       </form>
     </div>

@@ -104,7 +104,10 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
       </section>
 
       <section className="glass p-5">
-        <p className="mb-3 text-sm text-slate-300">Équipement de cuisine</p>
+        <p className="text-sm text-slate-300">Équipement de cuisine</p>
+        <p className="mb-3 mt-1 text-[11px] text-slate-500">
+          Touche pour activer/désactiver, puis « Enregistrer » en bas.
+        </p>
         <div className="grid grid-cols-2 gap-2">
           {EQUIPEMENTS.map(({ cle, label, emoji }) => {
             const actif = !!profil[cle];
@@ -113,14 +116,18 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
                 key={cle}
                 type="button"
                 onClick={() => setProfil((p) => ({ ...p, [cle]: !actif }))}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-sm transition ${
+                aria-pressed={actif}
+                className={`flex items-center justify-between rounded-xl border px-3 py-3 text-sm transition ${
                   actif
-                    ? 'border-accent-soft/40 bg-accent/20 text-white'
-                    : 'border-white/10 bg-white/[0.03] text-slate-400'
+                    ? 'border-accent-soft/60 bg-accent text-white shadow-lg shadow-accent/30'
+                    : 'border-white/10 bg-white/[0.03] text-slate-500 opacity-70'
                 }`}
               >
-                <span>{emoji}</span>
-                {label}
+                <span className="flex items-center gap-2">
+                  <span>{emoji}</span>
+                  {label}
+                </span>
+                <span className="text-xs font-bold">{actif ? '✓' : '—'}</span>
               </button>
             );
           })}
