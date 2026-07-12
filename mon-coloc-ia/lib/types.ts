@@ -65,11 +65,11 @@ export interface JournalActivite {
 
 // Catégories de l'inventaire de la maison.
 export const CATEGORIES_INVENTAIRE = [
-  { slug: 'frigo', label: 'Frigo', emoji: '🧊' },
-  { slug: 'epicerie', label: 'Épicerie', emoji: '🥫' },
-  { slug: 'hygiene', label: 'Hygiène', emoji: '🧴' },
-  { slug: 'menage', label: 'Ménage', emoji: '🧹' },
-  { slug: 'autre', label: 'Autre', emoji: '📦' },
+  { slug: 'frigo', label: 'Frigo' },
+  { slug: 'epicerie', label: 'Épicerie' },
+  { slug: 'hygiene', label: 'Hygiène' },
+  { slug: 'menage', label: 'Ménage' },
+  { slug: 'autre', label: 'Autre' },
 ] as const;
 
 export type CategorieInventaire = (typeof CATEGORIES_INVENTAIRE)[number]['slug'];

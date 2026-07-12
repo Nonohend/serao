@@ -1,6 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Flame,
+  PiggyBank,
+  Plus,
+  RotateCw,
+  TrendingDown,
+  TrendingUp,
+  X,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   arrondiVirtuel,
@@ -213,10 +224,11 @@ export default function Dashboard() {
           <p className="text-sm text-slate-400">Argent disponible</p>
           <button
             onClick={charger}
-            className="text-xs text-slate-400 transition hover:text-white"
+            className="flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-white"
             aria-label="Rafraîchir"
           >
-            ↻ Actualiser
+            <RotateCw size={13} strokeWidth={2} />
+            Actualiser
           </button>
         </div>
         <p className={`mt-1 text-4xl font-bold tracking-tight ${couleurSolde}`}>
@@ -248,13 +260,19 @@ export default function Dashboard() {
       {/* Entrées / Sorties du mois */}
       <div className="grid grid-cols-2 gap-4">
         <section className="glass-soft p-4">
-          <p className="text-xs text-slate-400">Entré ce mois</p>
+          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+            <TrendingUp size={13} className="text-emerald-400" />
+            Entré ce mois
+          </p>
           <p className="mt-1 text-xl font-bold text-emerald-300">
             +{formaterMontant(flux.entreesMois)}
           </p>
         </section>
         <section className="glass-soft p-4">
-          <p className="text-xs text-slate-400">Sorti ce mois</p>
+          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+            <TrendingDown size={13} className="text-rose-400" />
+            Sorti ce mois
+          </p>
           <p className="mt-1 text-xl font-bold text-rose-300">
             −{formaterMontant(flux.sortiesMois)}
           </p>
@@ -329,14 +347,20 @@ export default function Dashboard() {
       {/* Cagnotte des arrondis + Compteur de la honte */}
       <div className="grid grid-cols-2 gap-4">
         <section className="glass-soft p-4">
-          <p className="text-xs text-slate-400">Cagnotte arrondis</p>
+          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+            <PiggyBank size={13} className="text-sky-400" />
+            Cagnotte arrondis
+          </p>
           <p className="mt-1 text-2xl font-bold text-sky-300">
             {formaterMontant(cagnotte)}
           </p>
           <p className="mt-1 text-[11px] text-slate-500">épargne indolore ce mois</p>
         </section>
         <section className="glass-soft p-4">
-          <p className="text-xs text-slate-400">Compteur de la honte</p>
+          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+            <Flame size={13} className="text-rose-400" />
+            Compteur de la honte
+          </p>
           <p className="mt-1 text-2xl font-bold text-rose-400">
             {formaterMontant(honte)}
           </p>
@@ -350,8 +374,15 @@ export default function Dashboard() {
           onClick={() => setFormOuvert((v) => !v)}
           className="flex w-full items-center justify-between text-sm"
         >
-          <span className="font-medium text-slate-100">＋ Ajouter une opération</span>
-          <span className="text-slate-500">{formOuvert ? '▲' : '▼'}</span>
+          <span className="flex items-center gap-2 font-semibold text-slate-100">
+            <Plus size={16} strokeWidth={2.4} className="text-accent-soft" />
+            Ajouter une opération
+          </span>
+          {formOuvert ? (
+            <ChevronUp size={16} className="text-slate-500" />
+          ) : (
+            <ChevronDown size={16} className="text-slate-500" />
+          )}
         </button>
 
         {formOuvert && (
@@ -432,14 +463,23 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => setGaspillageForm((v) => !v)}
-                className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
+                aria-pressed={gaspillageForm}
+                className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition ${
                   gaspillageForm
                     ? 'border-rose-400/40 bg-rose-500/20 text-rose-200'
                     : 'border-white/10 bg-white/[0.03] text-slate-400'
                 }`}
               >
-                <span>{gaspillageForm ? '☑' : '☐'}</span>
-                C&apos;était du gaspillage, j&apos;assume 😅
+                <span
+                  className={`flex h-4 w-4 items-center justify-center rounded border ${
+                    gaspillageForm
+                      ? 'border-rose-300 bg-rose-400/80 text-white'
+                      : 'border-slate-500'
+                  }`}
+                >
+                  {gaspillageForm && <X size={11} strokeWidth={3} />}
+                </span>
+                Marquer comme gaspillage
               </button>
             )}
 
@@ -493,10 +533,10 @@ export default function Dashboard() {
                     </span>
                     <button
                       onClick={() => supprimerOperation(op)}
-                      className="rounded-md px-1.5 py-1 text-xs text-slate-600 transition hover:bg-rose-500/20 hover:text-rose-300"
+                      className="rounded-md p-1 text-slate-600 transition hover:bg-rose-500/20 hover:text-rose-300"
                       title="Supprimer cette opération"
                     >
-                      ✕
+                      <X size={14} strokeWidth={2.2} />
                     </button>
                   </div>
                 </li>

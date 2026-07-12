@@ -1,6 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import {
+  Box,
+  Brush,
+  Check,
+  ChefHat,
+  Droplets,
+  Plus,
+  Refrigerator,
+  RotateCw,
+  ShoppingBasket,
+  Trash2,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { joursAvantPeremption } from '@/lib/calculs';
 import {
@@ -8,6 +22,19 @@ import {
   type InventaireItem,
   type StatutInventaire,
 } from '@/lib/types';
+
+const ICONES_CATEGORIE: Record<string, LucideIcon> = {
+  frigo: Refrigerator,
+  epicerie: ShoppingBasket,
+  hygiene: Droplets,
+  menage: Brush,
+  autre: Box,
+};
+
+function IconeCategorie({ slug, taille = 14 }: { slug: string; taille?: number }) {
+  const Icone = ICONES_CATEGORIE[slug] ?? Box;
+  return <Icone size={taille} strokeWidth={2} className="text-slate-400" />;
+}
 
 function badgePeremption(jours: number): { label: string; classe: string } {
   if (jours < 0)
@@ -19,9 +46,6 @@ function badgePeremption(jours: number): { label: string; classe: string } {
   return { label: `${jours} j`, classe: 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30' };
 }
 
-function emojiCategorie(slug: string): string {
-  return CATEGORIES_INVENTAIRE.find((c) => c.slug === slug)?.emoji ?? '📦';
-}
 
 export default function InventaireFrigo() {
   const supabase = createClient();
@@ -150,16 +174,24 @@ export default function InventaireFrigo() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setFormOuvert((v) => !v)}
-              className="rounded-full border border-accent-soft/40 bg-accent/20 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-accent/40"
+              className="flex items-center gap-1.5 rounded-full border border-accent-soft/40 bg-accent/20 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-accent/40"
             >
-              {formOuvert ? '✕ Fermer' : '＋ Ajouter'}
+              {formOuvert ? (
+                <>
+                  <X size={13} strokeWidth={2.4} /> Fermer
+                </>
+              ) : (
+                <>
+                  <Plus size={13} strokeWidth={2.4} /> Ajouter
+                </>
+              )}
             </button>
             <button
               onClick={charger}
-              className="text-xs text-slate-400 transition hover:text-white"
+              className="p-1 text-slate-400 transition hover:text-white"
               aria-label="Rafraîchir"
             >
-              ↻
+              <RotateCw size={14} strokeWidth={2} />
             </button>
           </div>
         </div>
@@ -185,7 +217,7 @@ export default function InventaireFrigo() {
               >
                 {CATEGORIES_INVENTAIRE.map((c) => (
                   <option key={c.slug} value={c.slug} className="bg-slate-900">
-                    {c.emoji} {c.label}
+                    {c.label}
                   </option>
                 ))}
               </select>
@@ -230,13 +262,14 @@ export default function InventaireFrigo() {
             <button
               key={c.slug}
               onClick={() => setFiltre(c.slug)}
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs transition ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
                 filtre === c.slug
                   ? 'border-accent-soft/50 bg-accent/30 text-white'
                   : 'border-white/10 bg-white/[0.04] text-slate-400'
               }`}
             >
-              {c.emoji} {c.label} ({compteParCategorie.get(c.slug) ?? 0})
+              <IconeCategorie slug={c.slug} taille={12} />
+              {c.label} ({compteParCategorie.get(c.slug) ?? 0})
             </button>
           ))}
         </div>
@@ -265,7 +298,7 @@ export default function InventaireFrigo() {
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="shrink-0">
-                        {emojiCategorie(item.categorie ?? 'frigo')}
+                        <IconeCategorie slug={item.categorie ?? 'frigo'} />
                       </span>
                       <span
                         className={`shrink-0 rounded-lg border px-2 py-0.5 text-[11px] font-medium ${badge.classe}`}
@@ -279,17 +312,17 @@ export default function InventaireFrigo() {
                     <div className="ml-2 flex shrink-0 gap-1.5">
                       <button
                         onClick={() => changerStatut(item.id, 'consomme')}
-                        className="rounded-lg bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-300 transition hover:bg-emerald-500/25"
+                        className="rounded-lg bg-emerald-500/15 p-1.5 text-emerald-300 transition hover:bg-emerald-500/25"
                         title="Marquer utilisé / consommé"
                       >
-                        ✓
+                        <Check size={13} strokeWidth={2.6} />
                       </button>
                       <button
                         onClick={() => changerStatut(item.id, 'gaspille')}
-                        className="rounded-lg bg-rose-500/15 px-2 py-1 text-[11px] text-rose-300 transition hover:bg-rose-500/25"
+                        className="rounded-lg bg-rose-500/15 p-1.5 text-rose-300 transition hover:bg-rose-500/25"
                         title="Marquer gaspillé"
                       >
-                        🗑
+                        <Trash2 size={13} strokeWidth={2.2} />
                       </button>
                     </div>
                   </li>
@@ -303,9 +336,10 @@ export default function InventaireFrigo() {
       <button
         onClick={genererRecette}
         disabled={genereRecette}
-        className="glass-button-accent w-full"
+        className="glass-button-accent flex w-full items-center justify-center gap-2"
       >
-        {genereRecette ? 'Le chef réfléchit…' : "🍳 Qu'est-ce qu'on mange ?"}
+        <ChefHat size={17} strokeWidth={2.2} />
+        {genereRecette ? 'Le chef réfléchit…' : "Qu'est-ce qu'on mange ?"}
       </button>
 
       {recette && (

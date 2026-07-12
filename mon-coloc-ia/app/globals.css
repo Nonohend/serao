@@ -14,12 +14,13 @@ body {
 body {
   @apply text-slate-100 antialiased;
   min-height: 100dvh;
-  background-color: #0a0a12;
+  background-color: #0b0d13;
   background-image:
-    radial-gradient(1000px circle at 15% 10%, rgba(124, 92, 255, 0.18), transparent 45%),
-    radial-gradient(900px circle at 85% 20%, rgba(56, 189, 248, 0.14), transparent 45%),
-    radial-gradient(1100px circle at 50% 100%, rgba(236, 72, 153, 0.12), transparent 50%);
+    radial-gradient(900px circle at 20% 0%, rgba(124, 92, 255, 0.13), transparent 50%),
+    radial-gradient(800px circle at 90% 25%, rgba(56, 189, 248, 0.08), transparent 45%),
+    radial-gradient(1000px circle at 50% 110%, rgba(124, 92, 255, 0.07), transparent 55%);
   background-attachment: fixed;
+  font-feature-settings: 'tnum' on; /* chiffres alignés — rendu financier propre */
 }
 
 @layer components {

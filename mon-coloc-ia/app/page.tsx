@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import {
+  Home,
+  MessageCircle,
+  Package,
+  Settings,
+  Wallet,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Dashboard from '@/components/Dashboard';
 import ChatInterface from '@/components/ChatInterface';
@@ -10,12 +17,27 @@ import ProfilForm from '@/components/ProfilForm';
 
 type Onglet = 'dashboard' | 'chat' | 'frigo' | 'profil';
 
-const ONGLETS: { cle: Onglet; label: string; emoji: string }[] = [
-  { cle: 'dashboard', label: 'Budget', emoji: '📊' },
-  { cle: 'chat', label: 'Coloc', emoji: '💬' },
-  { cle: 'frigo', label: 'Stock', emoji: '🧺' },
-  { cle: 'profil', label: 'Profil', emoji: '⚙️' },
+const ONGLETS: { cle: Onglet; label: string; Icone: typeof Wallet }[] = [
+  { cle: 'dashboard', label: 'Budget', Icone: Wallet },
+  { cle: 'chat', label: 'Coloc', Icone: MessageCircle },
+  { cle: 'frigo', label: 'Stock', Icone: Package },
+  { cle: 'profil', label: 'Profil', Icone: Settings },
 ];
+
+function Logo({ taille = 'sm' }: { taille?: 'sm' | 'lg' }) {
+  const classes =
+    taille === 'lg'
+      ? 'h-16 w-16 rounded-2xl'
+      : 'h-8 w-8 rounded-xl';
+  const icone = taille === 'lg' ? 32 : 16;
+  return (
+    <div
+      className={`${classes} flex items-center justify-center bg-gradient-to-br from-accent to-sky-500 shadow-lg shadow-accent/30`}
+    >
+      <Home size={icone} strokeWidth={2.2} className="text-white" />
+    </div>
+  );
+}
 
 function Auth() {
   const supabase = createClient();
@@ -45,11 +67,11 @@ function Auth() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center p-6">
-      <div className="mb-8 text-center">
-        <div className="text-5xl">🏠</div>
-        <h1 className="mt-3 text-2xl font-bold tracking-tight">Mon Coloc IA</h1>
+      <div className="mb-8 flex flex-col items-center text-center">
+        <Logo taille="lg" />
+        <h1 className="mt-4 text-2xl font-bold tracking-tight">Mon Coloc IA</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Budget, anti-gaspillage & bons plans
+          Budget, anti-gaspillage &amp; bons plans
         </p>
       </div>
 
@@ -147,10 +169,8 @@ export default function Page() {
     <div className="flex min-h-[100dvh] flex-col">
       <header className="sticky top-0 z-10 px-4 pb-3 pt-5">
         <div className="glass-soft flex items-center justify-between px-4 py-3">
-          <h1 className="text-lg font-semibold tracking-tight">
-            {titres[onglet]}
-          </h1>
-          <span className="text-xl">🏠</span>
+          <h1 className="text-lg font-bold tracking-tight">{titres[onglet]}</h1>
+          <Logo />
         </div>
       </header>
 
@@ -168,16 +188,24 @@ export default function Page() {
       {/* Navigation basse — mobile first */}
       <nav className="fixed inset-x-0 bottom-0 z-10 mx-auto w-full max-w-md px-4 pb-4">
         <div className="glass flex items-center gap-1 p-1.5">
-          {ONGLETS.map((o) => (
-            <button
-              key={o.cle}
-              onClick={() => setOnglet(o.cle)}
-              className={`nav-pill ${onglet === o.cle ? 'nav-pill-active' : ''}`}
-            >
-              <span className="text-lg">{o.emoji}</span>
-              {o.label}
-            </button>
-          ))}
+          {ONGLETS.map(({ cle, label, Icone }) => {
+            const actif = onglet === cle;
+            return (
+              <button
+                key={cle}
+                onClick={() => setOnglet(cle)}
+                className={`nav-pill ${actif ? 'nav-pill-active' : ''}`}
+                aria-current={actif ? 'page' : undefined}
+              >
+                <Icone
+                  size={20}
+                  strokeWidth={actif ? 2.4 : 1.8}
+                  className={actif ? 'text-white' : 'text-slate-500'}
+                />
+                <span className={actif ? 'font-semibold' : ''}>{label}</span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>

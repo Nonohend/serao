@@ -1,14 +1,28 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import {
+  Check,
+  Flame,
+  LogOut,
+  Microwave,
+  Minus,
+  Refrigerator,
+  Snowflake,
+  type LucideIcon,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { ProfilUtilisateur } from '@/lib/types';
 
-const EQUIPEMENTS: { cle: keyof ProfilUtilisateur; label: string; emoji: string }[] = [
-  { cle: 'a_un_frigo', label: 'Frigo', emoji: '🧊' },
-  { cle: 'a_un_congelo', label: 'Congélateur', emoji: '❄️' },
-  { cle: 'a_des_plaques', label: 'Plaques', emoji: '🔥' },
-  { cle: 'a_un_microondes', label: 'Micro-ondes', emoji: '🍲' },
+const EQUIPEMENTS: {
+  cle: keyof ProfilUtilisateur;
+  label: string;
+  Icone: LucideIcon;
+}[] = [
+  { cle: 'a_un_frigo', label: 'Frigo', Icone: Refrigerator },
+  { cle: 'a_un_congelo', label: 'Congélateur', Icone: Snowflake },
+  { cle: 'a_des_plaques', label: 'Plaques', Icone: Flame },
+  { cle: 'a_un_microondes', label: 'Micro-ondes', Icone: Microwave },
 ];
 
 const defautProfil: Partial<ProfilUtilisateur> = {
@@ -115,7 +129,7 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
           Touche pour activer/désactiver, puis « Enregistrer » en bas.
         </p>
         <div className="grid grid-cols-2 gap-2">
-          {EQUIPEMENTS.map(({ cle, label, emoji }) => {
+          {EQUIPEMENTS.map(({ cle, label, Icone }) => {
             const actif = !!profil[cle];
             return (
               <button
@@ -130,10 +144,14 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <span>{emoji}</span>
+                  <Icone size={16} strokeWidth={2} />
                   {label}
                 </span>
-                <span className="text-xs font-bold">{actif ? '✓' : '—'}</span>
+                {actif ? (
+                  <Check size={14} strokeWidth={2.6} />
+                ) : (
+                  <Minus size={14} strokeWidth={2} />
+                )}
               </button>
             );
           })}
@@ -196,8 +214,9 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
         <button
           type="button"
           onClick={onLogout}
-          className="glass-button w-full text-slate-300"
+          className="glass-button flex w-full items-center justify-center gap-2 text-slate-300"
         >
+          <LogOut size={15} strokeWidth={2} />
           Se déconnecter
         </button>
       )}

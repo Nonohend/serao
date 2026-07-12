@@ -2,13 +2,14 @@
 
 import { useChat } from '@ai-sdk/react';
 import type { Attachment, Message } from 'ai';
+import { Camera, Flame, SendHorizontal, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const LIBELLE_OUTIL: Record<string, string> = {
-  rechercheWeb: '🔎 Recherche web…',
-  enregistrerDepense: '💸 Enregistrement de la dépense…',
-  enregistrerRevenu: '💰 Entrée d’argent enregistrée…',
-  enregistrerActivite: '📝 Activité notée…',
+  rechercheWeb: 'Recherche web…',
+  enregistrerDepense: 'Dépense enregistrée',
+  enregistrerRevenu: 'Entrée d’argent enregistrée',
+  enregistrerActivite: 'Activité notée',
 };
 
 // Clé de sauvegarde locale de la conversation (sur l'appareil).
@@ -164,26 +165,26 @@ export default function ChatInterface() {
             <button
               type="button"
               onClick={effacerConversation}
-              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-400 transition hover:text-white"
+              className="rounded-full border border-white/10 bg-white/5 p-2 text-slate-400 transition hover:text-white"
               title="Effacer la conversation"
             >
-              🗑️
+              <Trash2 size={14} strokeWidth={2} />
             </button>
           )}
           <button
             type="button"
             onClick={() => setModeRoast((v) => !v)}
-            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
               modeRoast
                 ? 'border-rose-400/40 bg-rose-500/20 text-rose-300'
                 : 'border-white/10 bg-white/5 text-slate-400'
             }`}
             aria-pressed={modeRoast}
           >
-            <span
-              className={`h-2 w-2 rounded-full ${
-                modeRoast ? 'bg-rose-400' : 'bg-slate-500'
-              }`}
+            <Flame
+              size={13}
+              strokeWidth={2.2}
+              className={modeRoast ? 'text-rose-400' : 'text-slate-500'}
             />
             Roast
           </button>
@@ -195,10 +196,13 @@ export default function ChatInterface() {
         {messages.length === 0 && (
           <div className="glass-soft p-4 text-sm text-slate-400">
             <p className="mb-2 text-slate-300">Exemples :</p>
-            <ul className="space-y-1 text-slate-400">
-              <li>« J&apos;ai encaissé 200 000 Ar sur une vente » 💰</li>
+            <ul className="space-y-1.5 text-slate-400">
+              <li>« J&apos;ai encaissé 200 000 Ar sur une vente »</li>
               <li>« 50 000 Ar de courses : poulet, riz, tomates »</li>
-              <li>📷 Envoie une photo de ton ticket de caisse</li>
+              <li className="flex items-center gap-1.5">
+                <Camera size={13} className="shrink-0" />
+                Envoie une photo de ton ticket de caisse
+              </li>
               <li>« Combien de jours d&apos;avance il me reste ? »</li>
             </ul>
           </div>
@@ -238,8 +242,12 @@ export default function ChatInterface() {
                 {outils.length > 0 && (
                   <div className="mb-1 space-y-0.5">
                     {outils.map((t, i) => (
-                      <p key={i} className="text-[11px] text-slate-400">
-                        {LIBELLE_OUTIL[t.toolName] ?? `🔧 ${t.toolName}…`}
+                      <p
+                        key={i}
+                        className="flex items-center gap-1.5 text-[11px] text-slate-400"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        {LIBELLE_OUTIL[t.toolName] ?? `${t.toolName}…`}
                       </p>
                     ))}
                   </div>
@@ -288,9 +296,10 @@ export default function ChatInterface() {
           <button
             type="button"
             onClick={() => setPieceJointe(null)}
-            className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300"
+            className="rounded-full bg-white/10 p-1.5 text-slate-300"
+            aria-label="Retirer la photo"
           >
-            ✕
+            <X size={13} strokeWidth={2.4} />
           </button>
         </div>
       )}
@@ -310,8 +319,9 @@ export default function ChatInterface() {
           disabled={enCours || compression}
           className="glass-button shrink-0 px-3"
           title="Envoyer une photo (ticket de caisse, produit…)"
+          aria-label="Envoyer une photo"
         >
-          {compression ? '…' : '📷'}
+          {compression ? '…' : <Camera size={18} strokeWidth={2} />}
         </button>
         <input
           value={input}
@@ -324,8 +334,9 @@ export default function ChatInterface() {
           type="submit"
           className="glass-button-accent shrink-0 px-4"
           disabled={enCours || compression || (!input.trim() && !pieceJointe)}
+          aria-label="Envoyer"
         >
-          ➤
+          <SendHorizontal size={18} strokeWidth={2.2} />
         </button>
       </form>
     </div>
