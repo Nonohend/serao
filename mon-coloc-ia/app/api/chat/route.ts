@@ -14,6 +14,7 @@ import type {
   JournalActivite,
   Objectif,
   ProfilUtilisateur,
+  Projet,
   Revenu,
 } from '@/lib/types';
 
@@ -29,8 +30,22 @@ function construireSystemPrompt(
   depenses: Depense[],
   revenus: Revenu[],
   objectifs: Objectif[],
+  projets: Projet[],
   dernieresActivites: JournalActivite[],
 ): string {
+  const resumeProjets = projets.length
+    ? projets
+        .map((p) => {
+          const sorties = depenses
+            .filter((d) => d.projet_id === p.id)
+            .reduce((acc, d) => acc + Number(d.montant), 0);
+          const entrees = revenus
+            .filter((r) => r.projet_id === p.id)
+            .reduce((acc, r) => acc + Number(r.montant), 0);
+          return `- ${p.nom} (${p.statut}) : investi ${formaterMontant(sorties)}, rapporté ${formaterMontant(entrees)}, net ${formaterMontant(entrees - sorties)}`;
+        })
+        .join('\n')
+    : '- aucun projet déclaré pour le moment';
   const dernieresDepenses = depenses.slice(0, 5);
   const flux = calculerFlux(depenses, revenus);
   const totalReserve = objectifs.reduce(
@@ -101,6 +116,9 @@ SITUATION FINANCIÈRE ACTUELLE :
 OBJECTIFS D'ÉPARGNE :
 ${resumeObjectifs}
 
+PROJETS BUSINESS (dépenses et entrées liées incluses dans le solde) :
+${resumeProjets}
+
 DERNIÈRES DÉPENSES :
 ${resumeDepenses}
 
@@ -112,6 +130,7 @@ MOBILE MONEY (MVola, Orange Money, Airtel Money) :
 - Pour chaque SMS ou capture : détermine le SENS (argent reçu → outil "enregistrerRevenu" ; paiement, achat, envoi → outil "enregistrerDepense"), le MONTANT, les FRAIS éventuels (ajoute-les au montant de la dépense et mentionne-les), le correspondant et la date si présente.
 - Un RETRAIT d'espèces (cash-out) ou un dépôt (cash-in) est un transfert interne, pas un revenu ni une dépense : ne l'enregistre pas, sauf si l'utilisateur précise à quoi sert l'argent.
 - Si le SMS affiche le NOUVEAU SOLDE du compte, compare-le au solde calculé par l'app (ci-dessus) et signale tout écart important — propose d'ajouter l'opération manquante.
+- LECTURE DES MONTANTS — RÈGLE CRITIQUE : dans les SMS malgaches, l'ESPACE (ou le point) sépare les MILLIERS et la VIRGULE sépare les DÉCIMALES. Exemples : « 2 000,00 Ar » = 2000 Ar (PAS 20 000) ; « Ar 2.000,00 » = 2000 Ar ; « 15 000 Ar » = 15000 Ar. Relis le montant deux fois avant d'enregistrer. Dans ta réponse, cite le montant TEL QU'ÉCRIT dans le SMS puis le montant que tu as enregistré, pour que l'utilisateur puisse vérifier d'un coup d'œil. En cas de doute, demande confirmation AVANT d'enregistrer.
 
 RÈGLES :
 - Tous les montants sont en Ariary (Ar).
@@ -123,6 +142,7 @@ RÈGLES :
 - Quand l'utilisateur raconte ce qu'il fait ou a fait (sortie, sport, cuisine, projet, événement…), note-le avec l'outil "enregistrerActivite" pour t'en souvenir, puis réagis normalement.
 - Quand l'utilisateur demande combien il peut/devrait dépenser, appuie-toi sur la PRÉDICTION ci-dessus (budget conseillé par jour et reste du jour).
 - Quand l'utilisateur veut mettre de côté, créer une réserve ou épargner pour quelque chose (ex : "mets 100 000 Ar de côté pour le loyer"), utilise l'outil "gererObjectif".
+- Quand l'utilisateur parle d'un nouveau projet business ("je lance un élevage de poulets", "nouveau projet : revente de téléphones"), utilise l'outil "gererProjet" pour le créer. Quand une dépense ou une entrée concerne un projet existant, renseigne le paramètre "projet" des outils d'enregistrement — tu peux analyser la rentabilité de chaque projet (investi vs rapporté).
 - Félicite les bonnes rentrées, alerte gentiment quand les jours d'avance baissent dangereusement (< 7 jours), et conseille de mettre de côté quand une grosse somme rentre.
 - Quand l'utilisateur demande des prix réels, des promotions locales, ou des informations d'actualité, utilise l'outil "rechercheWeb".
 - Réponds en français, de façon concise et actionnable.`;
@@ -191,6 +211,7 @@ export async function POST(req: Request) {
     { data: toutesDepenses },
     { data: tousRevenus },
     { data: tousObjectifs },
+    { data: tousProjets },
     { data: dernieresActivites },
   ] = await Promise.all([
     supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
@@ -210,12 +231,31 @@ export async function POST(req: Request) {
       .eq('user_id', user.id)
       .order('cree_le', { ascending: true }),
     supabase
+      .from('projets')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('cree_le', { ascending: true }),
+    supabase
       .from('journal_activites')
       .select('*')
       .eq('user_id', user.id)
       .order('date_activite', { ascending: false })
       .limit(5),
   ]);
+
+  // Retrouve l'identifiant d'un projet à partir de son nom (approximatif).
+  const projets = (tousProjets ?? []) as Projet[];
+  function trouverProjetId(nom: string): string | null {
+    if (!nom) return null;
+    const cible = nom.trim().toLowerCase();
+    const exact = projets.find((p) => p.nom.toLowerCase() === cible);
+    if (exact) return exact.id;
+    const partiel = projets.find(
+      (p) =>
+        p.nom.toLowerCase().includes(cible) || cible.includes(p.nom.toLowerCase()),
+    );
+    return partiel?.id ?? null;
+  }
 
   const result = streamText({
     model: modeleGemini(),
@@ -225,6 +265,7 @@ export async function POST(req: Request) {
       (toutesDepenses ?? []) as Depense[],
       (tousRevenus ?? []) as Revenu[],
       (tousObjectifs ?? []) as Objectif[],
+      projets,
       (dernieresActivites ?? []) as JournalActivite[],
     ),
     messages: convertToCoreMessages(messages),
@@ -270,6 +311,11 @@ export async function POST(req: Request) {
             .describe(
               `Catégorie de chaque produit, dans le même ordre que "produits", parmi : ${CATEGORIES_VALIDES.join(', ')} (liste vide si aucun).`,
             ),
+          projet: z
+            .string()
+            .describe(
+              'Nom du projet business lié à cette dépense (chaîne vide si dépense personnelle).',
+            ),
         }),
         execute: async ({
           montant,
@@ -279,6 +325,7 @@ export async function POST(req: Request) {
           produits,
           jours_conservation,
           categories_produits,
+          projet,
         }) => {
           const { data: depense, error } = await supabase
             .from('depenses')
@@ -289,6 +336,7 @@ export async function POST(req: Request) {
               description: description || null,
               est_gaspillage: est_gaspillage,
               montant_arrondi_virtuel: arrondiVirtuel(montant),
+              projet_id: trouverProjetId(projet),
             })
             .select()
             .single();
@@ -334,18 +382,65 @@ export async function POST(req: Request) {
           description: z
             .string()
             .describe('Courte description libre (chaîne vide si rien à préciser).'),
+          projet: z
+            .string()
+            .describe(
+              'Nom du projet business lié à cette entrée (chaîne vide si sans lien).',
+            ),
         }),
-        execute: async ({ montant, source, description }) => {
+        execute: async ({ montant, source, description, projet }) => {
           const { error } = await supabase.from('revenus').insert({
             user_id: user.id,
             montant,
             source,
             description: description || null,
+            projet_id: trouverProjetId(projet),
           });
           if (error) {
             return `Impossible d'enregistrer l'entrée d'argent : ${error.message}.`;
           }
           return `Entrée d'argent enregistrée : ${formaterMontant(montant)} (${source}).`;
+        },
+      }),
+      gererProjet: tool({
+        description:
+          "Gère les projets business de l'utilisateur : créer un projet, le marquer terminé ou en pause. Les dépenses/entrées liées à un projet permettent d'analyser sa rentabilité.",
+        parameters: z.object({
+          action: z
+            .enum(['creer', 'terminer', 'pause', 'reactiver'])
+            .describe("Action sur le projet."),
+          nom: z.string().describe('Nom du projet, ex : Élevage de poulets.'),
+          description: z
+            .string()
+            .describe('Description courte du projet (chaîne vide si rien).'),
+        }),
+        execute: async ({ action, nom, description }) => {
+          if (action === 'creer') {
+            const { error } = await supabase.from('projets').insert({
+              user_id: user.id,
+              nom,
+              description: description || null,
+            });
+            if (error) return `Impossible de créer le projet : ${error.message}.`;
+            return `Projet « ${nom} » créé. Les dépenses et entrées liées pourront maintenant lui être rattachées.`;
+          }
+
+          const projetId = trouverProjetId(nom);
+          if (!projetId) {
+            return `Aucun projet ne correspond à « ${nom} ». Propose à l'utilisateur de le créer.`;
+          }
+          const statut =
+            action === 'terminer'
+              ? 'termine'
+              : action === 'pause'
+                ? 'pause'
+                : 'actif';
+          const { error } = await supabase
+            .from('projets')
+            .update({ statut })
+            .eq('id', projetId);
+          if (error) return `Impossible de mettre à jour le projet : ${error.message}.`;
+          return `Projet « ${nom} » marqué « ${statut} ».`;
         },
       }),
       gererObjectif: tool({

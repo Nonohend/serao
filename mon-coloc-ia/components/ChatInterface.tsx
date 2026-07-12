@@ -10,6 +10,7 @@ const LIBELLE_OUTIL: Record<string, string> = {
   enregistrerDepense: 'Dépense enregistrée',
   enregistrerRevenu: 'Entrée d’argent enregistrée',
   gererObjectif: 'Objectif mis à jour',
+  gererProjet: 'Projet mis à jour',
   enregistrerActivite: 'Activité notée',
 };
 

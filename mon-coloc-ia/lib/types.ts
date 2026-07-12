@@ -21,6 +21,16 @@ export interface Depense {
   date_transaction: string;
   est_gaspillage: boolean;
   montant_arrondi_virtuel: number;
+  projet_id?: string | null;
+}
+
+export interface Projet {
+  id: string;
+  user_id: string;
+  nom: string;
+  description: string | null;
+  statut: 'actif' | 'termine' | 'pause';
+  cree_le: string;
 }
 
 export interface Revenu {
@@ -30,6 +40,7 @@ export interface Revenu {
   source: string | null;
   description: string | null;
   date_reception: string;
+  projet_id?: string | null;
 }
 
 // Photographie de la trésorerie — pensée pour des revenus irréguliers :

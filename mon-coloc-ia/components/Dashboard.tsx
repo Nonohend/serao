@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Briefcase,
   ChevronDown,
   ChevronUp,
   Flame,
@@ -30,7 +31,13 @@ import {
   formaterMontant,
   versDatetimeLocal,
 } from '@/lib/calculs';
-import type { Depense, Objectif, ProfilUtilisateur, Revenu } from '@/lib/types';
+import type {
+  Depense,
+  Objectif,
+  ProfilUtilisateur,
+  Projet,
+  Revenu,
+} from '@/lib/types';
 
 const CATEGORIES_DEPENSE = [
   'Courses',
@@ -112,6 +119,13 @@ export default function Dashboard() {
   const [revenusDisponibles, setRevenusDisponibles] = useState(true);
   const [objectifs, setObjectifs] = useState<Objectif[]>([]);
   const [objectifsDisponibles, setObjectifsDisponibles] = useState(true);
+  const [projets, setProjets] = useState<Projet[]>([]);
+  const [projetsDisponibles, setProjetsDisponibles] = useState(true);
+
+  // Formulaire projets.
+  const [projFormOuvert, setProjFormOuvert] = useState(false);
+  const [projNom, setProjNom] = useState('');
+  const [projErreur, setProjErreur] = useState<string | null>(null);
   const [profil, setProfil] = useState<ProfilUtilisateur | null>(null);
   const [chargement, setChargement] = useState(true);
   const [nbOperationsAffichees, setNbOperationsAffichees] = useState(8);
@@ -134,6 +148,7 @@ export default function Dashboard() {
   const [descriptionForm, setDescriptionForm] = useState('');
   const [gaspillageForm, setGaspillageForm] = useState(false);
   const [dateForm, setDateForm] = useState('');
+  const [projetForm, setProjetForm] = useState('');
   const [ajoutEnCours, setAjoutEnCours] = useState(false);
   const [erreurAjout, setErreurAjout] = useState<string | null>(null);
   const refForm = useRef<HTMLDivElement>(null);
@@ -148,7 +163,8 @@ export default function Dashboard() {
       return;
     }
 
-    const [depensesRes, revenusRes, objectifsRes, profilRes] = await Promise.all([
+    const [depensesRes, revenusRes, objectifsRes, projetsRes, profilRes] =
+      await Promise.all([
       supabase
         .from('depenses')
         .select('*')
@@ -164,15 +180,22 @@ export default function Dashboard() {
         .select('*')
         .eq('user_id', user.id)
         .order('cree_le', { ascending: true }),
+      supabase
+        .from('projets')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('cree_le', { ascending: true }),
       supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
     ]);
 
     setDepenses((depensesRes.data ?? []) as Depense[]);
     setRevenus((revenusRes.data ?? []) as Revenu[]);
     setObjectifs((objectifsRes.data ?? []) as Objectif[]);
-    // Tables absentes tant que les migrations v3/v4 n'ont pas été exécutées.
+    setProjets((projetsRes.data ?? []) as Projet[]);
+    // Tables absentes tant que les migrations v3/v4/v5 n'ont pas été exécutées.
     setRevenusDisponibles(!revenusRes.error);
     setObjectifsDisponibles(!objectifsRes.error);
+    setProjetsDisponibles(!projetsRes.error);
     setProfil((profilRes.data ?? null) as ProfilUtilisateur | null);
     setChargement(false);
   }, [supabase]);
@@ -187,6 +210,7 @@ export default function Dashboard() {
     setDescriptionForm('');
     setGaspillageForm(false);
     setDateForm('');
+    setProjetForm('');
     setErreurAjout(null);
   }
 
@@ -200,6 +224,7 @@ export default function Dashboard() {
       setDescriptionForm(d.description ?? '');
       setGaspillageForm(d.est_gaspillage);
       setDateForm(versDatetimeLocal(d.date_transaction));
+      setProjetForm(d.projet_id ?? '');
     } else {
       const r = revenus.find((x) => x.id === op.id);
       if (!r) return;
@@ -208,6 +233,7 @@ export default function Dashboard() {
       setSourceForm(r.source ?? 'Business');
       setDescriptionForm(r.description ?? '');
       setDateForm(versDatetimeLocal(r.date_reception));
+      setProjetForm(r.projet_id ?? '');
     }
     setEditionId(op.id);
     setErreurAjout(null);
@@ -244,6 +270,7 @@ export default function Dashboard() {
         description: descriptionForm.trim() || null,
         est_gaspillage: gaspillageForm,
         montant_arrondi_virtuel: arrondiVirtuel(montant),
+        ...(projetsDisponibles ? { projet_id: projetForm || null } : {}),
         ...(dateIso ? { date_transaction: dateIso } : {}),
       };
       ({ error } = editionId
@@ -254,6 +281,7 @@ export default function Dashboard() {
         montant,
         source: sourceForm,
         description: descriptionForm.trim() || null,
+        ...(projetsDisponibles ? { projet_id: projetForm || null } : {}),
         ...(dateIso ? { date_reception: dateIso } : {}),
       };
       ({ error } = editionId
@@ -334,6 +362,68 @@ export default function Dashboard() {
     await supabase.from('objectifs').delete().eq('id', id);
   }
 
+  async function creerProjet(e: React.FormEvent) {
+    e.preventDefault();
+    const nom = projNom.trim();
+    if (!nom) return;
+
+    setProjErreur(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase.from('projets').insert({
+      user_id: user.id,
+      nom,
+    });
+
+    if (error) {
+      setProjErreur(
+        projetsDisponibles
+          ? `Erreur : ${error.message}`
+          : 'La table des projets n’existe pas encore : exécute la migration v5 dans Supabase (SQL Editor).',
+      );
+    } else {
+      setProjNom('');
+      setProjFormOuvert(false);
+      await charger();
+    }
+  }
+
+  async function changerStatutProjet(p: Projet) {
+    const statut = p.statut === 'actif' ? 'termine' : 'actif';
+    await supabase.from('projets').update({ statut }).eq('id', p.id);
+    await charger();
+  }
+
+  async function supprimerProjet(id: string) {
+    setProjets((prev) => prev.filter((p) => p.id !== id));
+    await supabase.from('projets').delete().eq('id', id);
+    await charger();
+  }
+
+  // Rentabilité par projet : investi (sorties), rapporté (entrées), net.
+  const statsProjets = useMemo(
+    () =>
+      projets.map((p) => {
+        const investi = depenses
+          .filter((d) => d.projet_id === p.id)
+          .reduce((acc, d) => acc + Number(d.montant), 0);
+        const rapporte = revenus
+          .filter((r) => r.projet_id === p.id)
+          .reduce((acc, r) => acc + Number(r.montant), 0);
+        return { projet: p, investi, rapporte, net: rapporte - investi };
+      }),
+    [projets, depenses, revenus],
+  );
+
+  const nomsProjets = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of projets) m.set(p.id, p.nom);
+    return m;
+  }, [projets]);
+
   const flux = calculerFlux(depenses, revenus);
   const totalReserve = objectifs.reduce(
     (acc, o) => acc + Number(o.montant_actuel),
@@ -379,7 +469,11 @@ export default function Dashboard() {
         table: 'depenses' as const,
         montant: -Number(d.montant),
         libelle: d.description || d.categorie,
-        sousLibelle: d.categorie,
+        sousLibelle:
+          d.categorie +
+          (d.projet_id && nomsProjets.has(d.projet_id)
+            ? ` · ${nomsProjets.get(d.projet_id)}`
+            : ''),
         date: d.date_transaction,
         gaspillage: d.est_gaspillage,
       })),
@@ -388,7 +482,11 @@ export default function Dashboard() {
         table: 'revenus' as const,
         montant: Number(r.montant),
         libelle: r.description || r.source || 'Entrée d’argent',
-        sousLibelle: r.source ?? 'Entrée',
+        sousLibelle:
+          (r.source ?? 'Entrée') +
+          (r.projet_id && nomsProjets.has(r.projet_id)
+            ? ` · ${nomsProjets.get(r.projet_id)}`
+            : ''),
         date: r.date_reception,
         gaspillage: false,
       })),
@@ -396,7 +494,7 @@ export default function Dashboard() {
     return lignes.sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
-  }, [depenses, revenus]);
+  }, [depenses, revenus, nomsProjets]);
 
   const couleurSolde =
     flux.soldeDisponible < 0 ? 'text-rose-400' : couleurFlux(flux.niveau);
@@ -604,6 +702,128 @@ export default function Dashboard() {
           </div>
         </section>
       )}
+
+      {/* Projets business : rentabilité */}
+      <section
+        className="glass animate-pop-in p-5"
+        style={{ animationDelay: prochainDelai() }}
+      >
+        <div className="flex items-center justify-between">
+          <p className="flex items-center gap-1.5 text-sm text-slate-400">
+            <Briefcase size={14} className="text-accent-soft" />
+            Mes projets
+          </p>
+          <button
+            onClick={() => setProjFormOuvert((v) => !v)}
+            className="flex items-center gap-1.5 rounded-full border border-accent-soft/40 bg-accent/20 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-accent/40"
+          >
+            {projFormOuvert ? (
+              <>
+                <X size={13} strokeWidth={2.4} /> Fermer
+              </>
+            ) : (
+              <>
+                <Plus size={13} strokeWidth={2.4} /> Nouveau projet
+              </>
+            )}
+          </button>
+        </div>
+
+        {projFormOuvert && (
+          <form
+            onSubmit={creerProjet}
+            className="animate-slide-down mt-3 space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
+          >
+            <input
+              value={projNom}
+              onChange={(e) => setProjNom(e.target.value)}
+              placeholder="Nom du projet (ex : élevage, revente tel…)"
+              className="glass-input"
+              required
+            />
+            {projErreur && <p className="text-xs text-rose-300">{projErreur}</p>}
+            <button type="submit" className="glass-button-accent w-full py-2 text-sm">
+              Créer le projet
+            </button>
+          </form>
+        )}
+
+        <div className="mt-3">
+          {statsProjets.length === 0 && !projFormOuvert ? (
+            <p className="text-sm text-slate-500">
+              Déclare tes business (élevage, revente…) : chaque dépense et
+              chaque rentrée liée s&apos;y rattache, et tu vois ce que chaque
+              projet te rapporte vraiment.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {statsProjets.map(({ projet, investi, rapporte, net }, i) => (
+                <li
+                  key={projet.id}
+                  className="animate-pop-in rounded-xl bg-white/[0.03] p-3"
+                  style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="truncate text-sm font-medium text-slate-200">
+                      {projet.nom}
+                      {projet.statut !== 'actif' && (
+                        <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-400">
+                          {projet.statut === 'termine' ? 'Terminé' : 'En pause'}
+                        </span>
+                      )}
+                    </p>
+                    <div className="ml-2 flex shrink-0 items-center gap-1">
+                      <button
+                        onClick={() => changerStatutProjet(projet)}
+                        className="rounded-md px-1.5 py-1 text-[10px] text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
+                        title={
+                          projet.statut === 'actif'
+                            ? 'Marquer terminé'
+                            : 'Réactiver'
+                        }
+                      >
+                        {projet.statut === 'actif' ? 'Terminer' : 'Réactiver'}
+                      </button>
+                      <button
+                        onClick={() => supprimerProjet(projet.id)}
+                        className="rounded-md p-1 text-slate-600 transition hover:bg-rose-500/20 hover:text-rose-300"
+                        title="Supprimer le projet (les opérations restent)"
+                      >
+                        <X size={14} strokeWidth={2.2} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-[10px] text-slate-500">Investi</p>
+                      <p className="text-sm font-semibold text-rose-300">
+                        {formaterMontant(investi)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">Rapporté</p>
+                      <p className="text-sm font-semibold text-emerald-300">
+                        {formaterMontant(rapporte)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">Net</p>
+                      <p
+                        className={`text-sm font-bold ${
+                          net >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                        }`}
+                      >
+                        {net >= 0 ? '+' : '−'}
+                        {formaterMontant(Math.abs(net))}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       {/* Objectifs d'épargne */}
       <section
@@ -892,6 +1112,23 @@ export default function Dashboard() {
               placeholder="Description (optionnel)"
               className="glass-input"
             />
+
+            {projetsDisponibles && projets.length > 0 && (
+              <select
+                value={projetForm}
+                onChange={(e) => setProjetForm(e.target.value)}
+                className="glass-input"
+              >
+                <option value="" className="bg-slate-900">
+                  Aucun projet (perso)
+                </option>
+                {projets.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-slate-900">
+                    Projet : {p.nom}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <div>
               <label className="mb-1 block text-[11px] text-slate-500">
