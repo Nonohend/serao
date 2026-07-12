@@ -2,10 +2,17 @@ import { convertToCoreMessages, streamText, tool } from 'ai';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { modeleGemini } from '@/lib/ia';
-import { arrondiVirtuel, calculerFlux, formaterMontant } from '@/lib/calculs';
+import {
+  arrondiVirtuel,
+  budgetConseille,
+  calculerFlux,
+  depensesAujourdhui,
+  formaterMontant,
+} from '@/lib/calculs';
 import type {
   Depense,
   JournalActivite,
+  Objectif,
   ProfilUtilisateur,
   Revenu,
 } from '@/lib/types';
@@ -21,10 +28,26 @@ function construireSystemPrompt(
   modeRoast: boolean,
   depenses: Depense[],
   revenus: Revenu[],
+  objectifs: Objectif[],
   dernieresActivites: JournalActivite[],
 ): string {
   const dernieresDepenses = depenses.slice(0, 5);
   const flux = calculerFlux(depenses, revenus);
+  const totalReserve = objectifs.reduce(
+    (acc, o) => acc + Number(o.montant_actuel),
+    0,
+  );
+  const soldeLibre = flux.soldeDisponible - totalReserve;
+  const conseil = budgetConseille(soldeLibre, depensesAujourdhui(depenses));
+
+  const resumeObjectifs = objectifs.length
+    ? objectifs
+        .map(
+          (o) =>
+            `- ${o.nom} : ${formaterMontant(Number(o.montant_actuel))} / ${formaterMontant(Number(o.montant_cible))}`,
+        )
+        .join('\n')
+    : '- aucun objectif défini pour le moment';
   const equipements: string[] = [];
   if (profil?.a_un_frigo) equipements.push('un frigo');
   if (profil?.a_un_congelo) equipements.push('un congélateur');
@@ -62,13 +85,21 @@ PROFIL DE L'UTILISATEUR :
 - Niveau d'énergie le soir (1 = épuisé, 5 = en forme) : ${energie}/5
 
 SITUATION FINANCIÈRE ACTUELLE :
-- Solde disponible : ${formaterMontant(flux.soldeDisponible)}
+- Solde disponible : ${formaterMontant(flux.soldeDisponible)}${
+    totalReserve > 0
+      ? ` (dont ${formaterMontant(totalReserve)} réservés pour les objectifs → ${formaterMontant(soldeLibre)} libres)`
+      : ''
+  }
 - Entrées ce mois : ${formaterMontant(flux.entreesMois)} / Sorties ce mois : ${formaterMontant(flux.sortiesMois)}
 - Rythme de dépense moyen : ${formaterMontant(flux.depenseMoyenneJour)}/jour${
     flux.runwayJours !== null
       ? ` (soit ≈ ${flux.runwayJours} jours d'avance)`
       : ''
   }
+- PRÉDICTION : pour tenir 30 jours, budget conseillé ${formaterMontant(conseil.parJour)}/jour ; encore dépensable aujourd'hui : ${formaterMontant(conseil.resteAujourdhui)}
+
+OBJECTIFS D'ÉPARGNE :
+${resumeObjectifs}
 
 DERNIÈRES DÉPENSES :
 ${resumeDepenses}
@@ -84,6 +115,8 @@ RÈGLES :
 - Si l'utilisateur envoie une PHOTO (ticket de caisse, courses posées sur la table, produit…), analyse-la : identifie le montant total et les produits achetés, puis enregistre la dépense avec l'outil "enregistrerDepense" en listant les produits reconnus. Si le montant total n'est pas lisible, demande-le.
 - Quand l'utilisateur dit avoir GAGNÉ, ENCAISSÉ ou REÇU de l'argent (ex : "j'ai encaissé 200 000 Ar sur une vente", "un client m'a payé 50 000 Ar"), utilise l'outil "enregistrerRevenu".
 - Quand l'utilisateur raconte ce qu'il fait ou a fait (sortie, sport, cuisine, projet, événement…), note-le avec l'outil "enregistrerActivite" pour t'en souvenir, puis réagis normalement.
+- Quand l'utilisateur demande combien il peut/devrait dépenser, appuie-toi sur la PRÉDICTION ci-dessus (budget conseillé par jour et reste du jour).
+- Quand l'utilisateur veut mettre de côté, créer une réserve ou épargner pour quelque chose (ex : "mets 100 000 Ar de côté pour le loyer"), utilise l'outil "gererObjectif".
 - Félicite les bonnes rentrées, alerte gentiment quand les jours d'avance baissent dangereusement (< 7 jours), et conseille de mettre de côté quand une grosse somme rentre.
 - Quand l'utilisateur demande des prix réels, des promotions locales, ou des informations d'actualité, utilise l'outil "rechercheWeb".
 - Réponds en français, de façon concise et actionnable.`;
@@ -151,6 +184,7 @@ export async function POST(req: Request) {
     { data: profil },
     { data: toutesDepenses },
     { data: tousRevenus },
+    { data: tousObjectifs },
     { data: dernieresActivites },
   ] = await Promise.all([
     supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
@@ -164,6 +198,11 @@ export async function POST(req: Request) {
       .select('*')
       .eq('user_id', user.id)
       .order('date_reception', { ascending: false }),
+    supabase
+      .from('objectifs')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('cree_le', { ascending: true }),
     supabase
       .from('journal_activites')
       .select('*')
@@ -179,6 +218,7 @@ export async function POST(req: Request) {
       modeRoast,
       (toutesDepenses ?? []) as Depense[],
       (tousRevenus ?? []) as Revenu[],
+      (tousObjectifs ?? []) as Objectif[],
       (dernieresActivites ?? []) as JournalActivite[],
     ),
     messages: convertToCoreMessages(messages),
@@ -300,6 +340,53 @@ export async function POST(req: Request) {
             return `Impossible d'enregistrer l'entrée d'argent : ${error.message}.`;
           }
           return `Entrée d'argent enregistrée : ${formaterMontant(montant)} (${source}).`;
+        },
+      }),
+      gererObjectif: tool({
+        description:
+          "Gère les objectifs d'épargne (réserves virtuelles) : créer un objectif, y ajouter de l'argent mis de côté, ou en retirer. Montants en Ariary.",
+        parameters: z.object({
+          action: z
+            .enum(['creer', 'alimenter', 'retirer'])
+            .describe(
+              "'creer' = nouvel objectif (montant = cible à atteindre) ; 'alimenter' = mettre de côté ; 'retirer' = reprendre de l'argent.",
+            ),
+          nom: z.string().describe("Nom de l'objectif, ex : Loyer, Moto, Écolage."),
+          montant: z.number().describe('Montant en Ariary (Ar).'),
+        }),
+        execute: async ({ action, nom, montant }) => {
+          if (action === 'creer') {
+            const { error } = await supabase.from('objectifs').insert({
+              user_id: user.id,
+              nom,
+              montant_cible: montant,
+            });
+            if (error) return `Impossible de créer l'objectif : ${error.message}.`;
+            return `Objectif « ${nom} » créé, cible : ${formaterMontant(montant)}.`;
+          }
+
+          const { data: existants } = await supabase
+            .from('objectifs')
+            .select('*')
+            .eq('user_id', user.id)
+            .ilike('nom', `%${nom}%`)
+            .limit(1);
+          const objectif = (existants ?? [])[0] as Objectif | undefined;
+          if (!objectif) {
+            return `Aucun objectif ne correspond à « ${nom} ». Propose à l'utilisateur de le créer.`;
+          }
+
+          const sens = action === 'alimenter' ? 1 : -1;
+          const nouveau = Math.max(
+            0,
+            Number(objectif.montant_actuel) + sens * montant,
+          );
+          const { error } = await supabase
+            .from('objectifs')
+            .update({ montant_actuel: nouveau })
+            .eq('id', objectif.id);
+          if (error) return `Impossible de mettre à jour l'objectif : ${error.message}.`;
+          return `Objectif « ${objectif.nom} » : ${formaterMontant(nouveau)} / ${formaterMontant(Number(objectif.montant_cible))} mis de côté.`;
         },
       }),
       enregistrerActivite: tool({

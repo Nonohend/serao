@@ -9,6 +9,7 @@ const LIBELLE_OUTIL: Record<string, string> = {
   rechercheWeb: 'Recherche web…',
   enregistrerDepense: 'Dépense enregistrée',
   enregistrerRevenu: 'Entrée d’argent enregistrée',
+  gererObjectif: 'Objectif mis à jour',
   enregistrerActivite: 'Activité notée',
 };
 

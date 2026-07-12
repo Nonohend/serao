@@ -15,12 +15,94 @@ body {
   @apply text-slate-100 antialiased;
   min-height: 100dvh;
   background-color: #0b0d13;
-  background-image:
-    radial-gradient(900px circle at 20% 0%, rgba(124, 92, 255, 0.13), transparent 50%),
-    radial-gradient(800px circle at 90% 25%, rgba(56, 189, 248, 0.08), transparent 45%),
-    radial-gradient(1000px circle at 50% 110%, rgba(124, 92, 255, 0.07), transparent 55%);
-  background-attachment: fixed;
   font-feature-settings: 'tnum' on; /* chiffres alignés — rendu financier propre */
+}
+
+/* --------------------------------------------------------------------------
+   Fond animé « aurore » : nappes de couleur floutées qui dérivent lentement.
+   Transform-only (GPU) pour rester fluide sur mobile.
+   -------------------------------------------------------------------------- */
+.fond-anime {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.fond-anime::after {
+  /* Léger voile pour garder le texte lisible quelles que soient les nappes. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 0%, transparent 40%, rgba(11, 13, 19, 0.55) 100%);
+}
+
+.fond-anime span {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  will-change: transform;
+}
+
+.blob-violet {
+  width: 55vh;
+  height: 55vh;
+  top: -12%;
+  left: -18%;
+  background: radial-gradient(circle, rgba(124, 92, 255, 0.4), transparent 68%);
+  animation: derive-a 26s ease-in-out infinite alternate;
+}
+
+.blob-cyan {
+  width: 48vh;
+  height: 48vh;
+  top: 30%;
+  right: -22%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.28), transparent 68%);
+  animation: derive-b 34s ease-in-out infinite alternate;
+}
+
+.blob-magenta {
+  width: 60vh;
+  height: 60vh;
+  bottom: -25%;
+  left: 5%;
+  background: radial-gradient(circle, rgba(192, 132, 252, 0.22), transparent 68%);
+  animation: derive-c 42s ease-in-out infinite alternate;
+}
+
+@keyframes derive-a {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(16vw, 22vh) scale(1.25);
+  }
+}
+
+@keyframes derive-b {
+  from {
+    transform: translate(0, 0) scale(1.15);
+  }
+  to {
+    transform: translate(-18vw, -14vh) scale(0.9);
+  }
+}
+
+@keyframes derive-c {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(14vw, -18vh) scale(1.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fond-anime span {
+    animation: none;
+  }
 }
 
 @layer components {

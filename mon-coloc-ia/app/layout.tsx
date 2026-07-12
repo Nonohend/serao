@@ -28,6 +28,11 @@ export default function RootLayout({
   return (
     <html lang="fr" className="dark">
       <body className={manrope.className}>
+        <div className="fond-anime" aria-hidden>
+          <span className="blob-violet" />
+          <span className="blob-cyan" />
+          <span className="blob-magenta" />
+        </div>
         <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col">
           {children}
         </div>

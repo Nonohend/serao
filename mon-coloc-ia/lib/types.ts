@@ -43,6 +43,16 @@ export interface FluxTresorerie {
   niveau: 'ok' | 'attention' | 'critique';
 }
 
+export interface Objectif {
+  id: string;
+  user_id: string;
+  nom: string;
+  montant_cible: number;
+  montant_actuel: number;
+  echeance: string | null;
+  cree_le: string;
+}
+
 export type StatutInventaire = 'en_stock' | 'consomme' | 'gaspille';
 
 export interface InventaireItem {

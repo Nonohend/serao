@@ -230,6 +230,41 @@ export function couleurFlux(niveau: FluxTresorerie['niveau']): string {
   }
 }
 
+/** Total des dépenses effectuées aujourd'hui. */
+export function depensesAujourdhui(
+  depenses: Depense[],
+  reference = new Date(),
+): number {
+  const total = depenses
+    .filter((d) => {
+      const t = new Date(d.date_transaction);
+      return (
+        t.getFullYear() === reference.getFullYear() &&
+        t.getMonth() === reference.getMonth() &&
+        t.getDate() === reference.getDate()
+      );
+    })
+    .reduce((acc, d) => acc + Number(d.montant), 0);
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Prédiction « safe to spend » pour revenus irréguliers : pour que le solde
+ * libre (hors réserves d'objectifs) tienne `horizonJours`, combien puis-je
+ * dépenser par jour — et combien me reste-t-il pour aujourd'hui ?
+ */
+export function budgetConseille(
+  soldeLibre: number,
+  depensesDuJour: number,
+  horizonJours = 30,
+): { parJour: number; resteAujourdhui: number; horizonJours: number } {
+  const parJour =
+    soldeLibre > 0 ? Math.round((soldeLibre / horizonJours) * 100) / 100 : 0;
+  const resteAujourdhui =
+    Math.round(Math.max(0, parJour - depensesDuJour) * 100) / 100;
+  return { parJour, resteAujourdhui, horizonJours };
+}
+
 /** Date + heure courtes en français — ex : « 11 juil. 14:30 ». */
 export function formaterDateHeure(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', {

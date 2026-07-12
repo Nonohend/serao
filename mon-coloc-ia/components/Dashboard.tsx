@@ -9,6 +9,8 @@ import {
   PiggyBank,
   Plus,
   RotateCw,
+  Sparkles,
+  Target,
   TrendingDown,
   TrendingUp,
   X,
@@ -16,17 +18,19 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import {
   arrondiVirtuel,
+  budgetConseille,
   cagnotteArrondis,
   calculerFlux,
   compteurDeLaHonte,
   couleurFlux,
+  depensesAujourdhui,
   depensesDuMois,
   depensesParJour,
   formaterDateHeure,
   formaterMontant,
   versDatetimeLocal,
 } from '@/lib/calculs';
-import type { Depense, ProfilUtilisateur, Revenu } from '@/lib/types';
+import type { Depense, Objectif, ProfilUtilisateur, Revenu } from '@/lib/types';
 
 const CATEGORIES_DEPENSE = [
   'Courses',
@@ -98,9 +102,19 @@ export default function Dashboard() {
   const [depenses, setDepenses] = useState<Depense[]>([]);
   const [revenus, setRevenus] = useState<Revenu[]>([]);
   const [revenusDisponibles, setRevenusDisponibles] = useState(true);
+  const [objectifs, setObjectifs] = useState<Objectif[]>([]);
+  const [objectifsDisponibles, setObjectifsDisponibles] = useState(true);
   const [profil, setProfil] = useState<ProfilUtilisateur | null>(null);
   const [chargement, setChargement] = useState(true);
   const [nbOperationsAffichees, setNbOperationsAffichees] = useState(8);
+
+  // Formulaire objectifs.
+  const [objFormOuvert, setObjFormOuvert] = useState(false);
+  const [objNom, setObjNom] = useState('');
+  const [objCible, setObjCible] = useState('');
+  const [objErreur, setObjErreur] = useState<string | null>(null);
+  const [alimId, setAlimId] = useState<string | null>(null);
+  const [alimMontant, setAlimMontant] = useState('');
 
   // Formulaire d'ajout / modification (dépense OU entrée d'argent).
   const [formOuvert, setFormOuvert] = useState(false);
@@ -126,7 +140,7 @@ export default function Dashboard() {
       return;
     }
 
-    const [depensesRes, revenusRes, profilRes] = await Promise.all([
+    const [depensesRes, revenusRes, objectifsRes, profilRes] = await Promise.all([
       supabase
         .from('depenses')
         .select('*')
@@ -137,13 +151,20 @@ export default function Dashboard() {
         .select('*')
         .eq('user_id', user.id)
         .order('date_reception', { ascending: false }),
+      supabase
+        .from('objectifs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('cree_le', { ascending: true }),
       supabase.from('profil_utilisateur').select('*').eq('id', user.id).single(),
     ]);
 
     setDepenses((depensesRes.data ?? []) as Depense[]);
     setRevenus((revenusRes.data ?? []) as Revenu[]);
-    // Table absente tant que la migration v3 n'a pas été exécutée.
+    setObjectifs((objectifsRes.data ?? []) as Objectif[]);
+    // Tables absentes tant que les migrations v3/v4 n'ont pas été exécutées.
     setRevenusDisponibles(!revenusRes.error);
+    setObjectifsDisponibles(!objectifsRes.error);
     setProfil((profilRes.data ?? null) as ProfilUtilisateur | null);
     setChargement(false);
   }, [supabase]);
@@ -255,7 +276,69 @@ export default function Dashboard() {
     await supabase.from(op.table).delete().eq('id', op.id);
   }
 
+  async function creerObjectif(e: React.FormEvent) {
+    e.preventDefault();
+    const cible = Number(objCible);
+    const nom = objNom.trim();
+    if (!nom || !Number.isFinite(cible) || cible <= 0) return;
+
+    setObjErreur(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase.from('objectifs').insert({
+      user_id: user.id,
+      nom,
+      montant_cible: cible,
+    });
+
+    if (error) {
+      setObjErreur(
+        objectifsDisponibles
+          ? `Erreur : ${error.message}`
+          : 'La table des objectifs n’existe pas encore : exécute la migration v4 dans Supabase (SQL Editor).',
+      );
+    } else {
+      setObjNom('');
+      setObjCible('');
+      setObjFormOuvert(false);
+      await charger();
+    }
+  }
+
+  async function alimenterObjectif(obj: Objectif, sens: 1 | -1) {
+    const montant = Number(alimMontant);
+    if (!Number.isFinite(montant) || montant <= 0) return;
+    const nouveau = Math.max(0, Number(obj.montant_actuel) + sens * montant);
+    await supabase
+      .from('objectifs')
+      .update({ montant_actuel: nouveau })
+      .eq('id', obj.id);
+    setAlimId(null);
+    setAlimMontant('');
+    await charger();
+  }
+
+  async function supprimerObjectif(id: string) {
+    setObjectifs((prev) => prev.filter((o) => o.id !== id));
+    await supabase.from('objectifs').delete().eq('id', id);
+  }
+
   const flux = calculerFlux(depenses, revenus);
+  const totalReserve = objectifs.reduce(
+    (acc, o) => acc + Number(o.montant_actuel),
+    0,
+  );
+  const soldeLibre =
+    Math.round((flux.soldeDisponible - totalReserve) * 100) / 100;
+  const duJour = depensesAujourdhui(depenses);
+  const conseil = budgetConseille(soldeLibre, duJour);
+  const partConseilUtilisee =
+    conseil.parJour > 0
+      ? Math.min(100, Math.round((duJour / conseil.parJour) * 100))
+      : 0;
   const duMois = depensesDuMois(depenses);
   const cagnotte = cagnotteArrondis(duMois);
   const honte = compteurDeLaHonte(duMois);
@@ -360,7 +443,58 @@ export default function Dashboard() {
             'Enregistre tes entrées et dépenses pour voir tes jours d’avance.'
           )}
         </p>
+        {totalReserve > 0 && (
+          <p className="mt-1 text-xs text-slate-500">
+            dont{' '}
+            <span className="text-sky-300">{formaterMontant(totalReserve)}</span>{' '}
+            réservés pour tes objectifs —{' '}
+            <span className="text-slate-300">
+              {formaterMontant(soldeLibre)} libres
+            </span>
+          </p>
+        )}
       </section>
+
+      {/* Prédiction : combien dépenser aujourd'hui */}
+      {!chargement && conseil.parJour > 0 && (
+        <section
+          className="glass animate-pop-in p-5"
+          style={{ animationDelay: prochainDelai() }}
+        >
+          <p className="flex items-center gap-1.5 text-sm text-slate-400">
+            <Sparkles size={14} className="text-accent-soft" />
+            Conseillé aujourd&apos;hui
+          </p>
+          <div className="mt-1 flex items-baseline justify-between">
+            <MontantAnime
+              valeur={conseil.resteAujourdhui}
+              className={`text-3xl font-bold tracking-tight ${
+                conseil.resteAujourdhui <= 0 ? 'text-rose-400' : 'text-slate-100'
+              }`}
+            />
+            <span className="text-xs text-slate-500">
+              encore dépensable aujourd&apos;hui
+            </span>
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${
+                partConseilUtilisee >= 100
+                  ? 'bg-rose-400'
+                  : partConseilUtilisee >= 75
+                    ? 'bg-amber-400'
+                    : 'bg-emerald-400'
+              }`}
+              style={{ width: `${partConseilUtilisee}%` }}
+            />
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Déjà dépensé aujourd&apos;hui : {formaterMontant(duJour)} · budget
+            conseillé {formaterMontant(conseil.parJour)}/jour pour tenir{' '}
+            {conseil.horizonJours} jours avec ton solde libre.
+          </p>
+        </section>
+      )}
 
       {/* Entrées / Sorties du mois */}
       <div
@@ -462,6 +596,158 @@ export default function Dashboard() {
           </div>
         </section>
       )}
+
+      {/* Objectifs d'épargne */}
+      <section
+        className="glass animate-pop-in p-5"
+        style={{ animationDelay: prochainDelai() }}
+      >
+        <div className="flex items-center justify-between">
+          <p className="flex items-center gap-1.5 text-sm text-slate-400">
+            <Target size={14} className="text-accent-soft" />
+            Mes objectifs
+          </p>
+          <button
+            onClick={() => setObjFormOuvert((v) => !v)}
+            className="flex items-center gap-1.5 rounded-full border border-accent-soft/40 bg-accent/20 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-accent/40"
+          >
+            {objFormOuvert ? (
+              <>
+                <X size={13} strokeWidth={2.4} /> Fermer
+              </>
+            ) : (
+              <>
+                <Plus size={13} strokeWidth={2.4} /> Nouvel objectif
+              </>
+            )}
+          </button>
+        </div>
+
+        {objFormOuvert && (
+          <form
+            onSubmit={creerObjectif}
+            className="animate-slide-down mt-3 space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
+          >
+            <input
+              value={objNom}
+              onChange={(e) => setObjNom(e.target.value)}
+              placeholder="Nom (ex : loyer, moto, écolage…)"
+              className="glass-input"
+              required
+            />
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={objCible}
+                onChange={(e) => setObjCible(e.target.value)}
+                placeholder="Montant à atteindre"
+                className="glass-input flex-1"
+                required
+              />
+              <span className="flex items-center text-slate-400">Ar</span>
+            </div>
+            {objErreur && <p className="text-xs text-rose-300">{objErreur}</p>}
+            <button type="submit" className="glass-button-accent w-full py-2 text-sm">
+              Créer l&apos;objectif
+            </button>
+          </form>
+        )}
+
+        <div className="mt-3">
+          {objectifs.length === 0 && !objFormOuvert ? (
+            <p className="text-sm text-slate-500">
+              Mets de côté pour un loyer, une moto, l&apos;écolage… Quand une
+              grosse somme rentre, réserve-la ici : elle sort du « solde libre »
+              et ton budget conseillé s&apos;adapte.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {objectifs.map((obj, i) => {
+                const actuel = Number(obj.montant_actuel);
+                const cible = Math.max(1, Number(obj.montant_cible));
+                const part = Math.min(100, Math.round((actuel / cible) * 100));
+                const atteint = actuel >= cible;
+                return (
+                  <li
+                    key={obj.id}
+                    className="animate-pop-in rounded-xl bg-white/[0.03] p-3"
+                    style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="truncate text-sm font-medium text-slate-200">
+                        {obj.nom}
+                        {atteint && (
+                          <span className="ml-2 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">
+                            Atteint
+                          </span>
+                        )}
+                      </p>
+                      <div className="ml-2 flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setAlimId(alimId === obj.id ? null : obj.id);
+                            setAlimMontant('');
+                          }}
+                          className="rounded-md p-1 text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
+                          title="Ajouter / retirer de l'argent"
+                        >
+                          <PiggyBank size={14} strokeWidth={2} />
+                        </button>
+                        <button
+                          onClick={() => supprimerObjectif(obj.id)}
+                          className="rounded-md p-1 text-slate-600 transition hover:bg-rose-500/20 hover:text-rose-300"
+                          title="Supprimer l'objectif"
+                        >
+                          <X size={14} strokeWidth={2.2} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${
+                          atteint ? 'bg-emerald-400' : 'bg-accent'
+                        }`}
+                        style={{ width: `${part}%` }}
+                      />
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-slate-500">
+                      {formaterMontant(actuel)} / {formaterMontant(cible)} · {part}%
+                    </p>
+
+                    {alimId === obj.id && (
+                      <div className="animate-slide-down mt-2 flex gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          inputMode="numeric"
+                          value={alimMontant}
+                          onChange={(e) => setAlimMontant(e.target.value)}
+                          placeholder="Montant"
+                          className="glass-input flex-1 py-2 text-sm"
+                        />
+                        <button
+                          onClick={() => alimenterObjectif(obj, 1)}
+                          className="rounded-xl bg-emerald-500/20 px-3 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/30"
+                        >
+                          ＋
+                        </button>
+                        <button
+                          onClick={() => alimenterObjectif(obj, -1)}
+                          className="rounded-xl bg-rose-500/20 px-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/30"
+                        >
+                          −
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
 
       {/* Cagnotte des arrondis + Compteur de la honte */}
       <div
