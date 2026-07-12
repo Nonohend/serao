@@ -42,7 +42,15 @@ const CATEGORIES_DEPENSE = [
   'Autre',
 ];
 
-const SOURCES_REVENU = ['Business', 'Vente', 'Service', 'Salaire', 'Cadeau', 'Autre'];
+const SOURCES_REVENU = [
+  'Business',
+  'Vente',
+  'Service',
+  'Mobile Money',
+  'Salaire',
+  'Cadeau',
+  'Autre',
+];
 
 // Ligne unifiée pour la liste des opérations (dépenses + entrées).
 interface Operation {
