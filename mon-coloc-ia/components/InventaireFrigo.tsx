@@ -200,7 +200,7 @@ export default function InventaireFrigo() {
         {formOuvert && (
           <form
             onSubmit={ajouterProduit}
-            className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
+            className="animate-slide-down mt-4 space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
           >
             <input
               value={nomProduit}
@@ -285,7 +285,7 @@ export default function InventaireFrigo() {
             </p>
           ) : (
             <ul className="space-y-2">
-              {itemsAffiches.map((item) => {
+              {itemsAffiches.map((item, i) => {
                 const jours = joursAvantPeremption(
                   item.date_achat,
                   item.jours_conservation_estimes,
@@ -294,7 +294,8 @@ export default function InventaireFrigo() {
                 return (
                   <li
                     key={item.id}
-                    className="flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2.5"
+                    className="animate-pop-in flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2.5 transition hover:bg-white/[0.06]"
+                    style={{ animationDelay: `${Math.min(i, 8) * 35}ms` }}
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="shrink-0">

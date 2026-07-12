@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
   Flame,
+  Pencil,
   PiggyBank,
   Plus,
   RotateCw,
@@ -21,7 +22,9 @@ import {
   couleurFlux,
   depensesDuMois,
   depensesParJour,
+  formaterDateHeure,
   formaterMontant,
+  versDatetimeLocal,
 } from '@/lib/calculs';
 import type { Depense, ProfilUtilisateur, Revenu } from '@/lib/types';
 
@@ -48,6 +51,48 @@ interface Operation {
   gaspillage: boolean;
 }
 
+// Montant qui « compte » en douceur vers sa nouvelle valeur.
+function MontantAnime({
+  valeur,
+  className,
+  prefixe = '',
+}: {
+  valeur: number;
+  className?: string;
+  prefixe?: string;
+}) {
+  const [affiche, setAffiche] = useState(valeur);
+  const precedent = useRef(valeur);
+
+  useEffect(() => {
+    const depart = precedent.current;
+    const delta = valeur - depart;
+    if (delta === 0) return;
+    const debut = performance.now();
+    const duree = 650;
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - debut) / duree);
+      const ease = 1 - Math.pow(1 - p, 3);
+      setAffiche(depart + delta * ease);
+      if (p < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        precedent.current = valeur;
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [valeur]);
+
+  return (
+    <span className={className}>
+      {prefixe}
+      {formaterMontant(affiche)}
+    </span>
+  );
+}
+
 export default function Dashboard() {
   const supabase = createClient();
   const [depenses, setDepenses] = useState<Depense[]>([]);
@@ -57,16 +102,19 @@ export default function Dashboard() {
   const [chargement, setChargement] = useState(true);
   const [nbOperationsAffichees, setNbOperationsAffichees] = useState(8);
 
-  // Formulaire d'ajout rapide (dépense OU entrée d'argent).
+  // Formulaire d'ajout / modification (dépense OU entrée d'argent).
   const [formOuvert, setFormOuvert] = useState(false);
+  const [editionId, setEditionId] = useState<string | null>(null);
   const [typeForm, setTypeForm] = useState<'depense' | 'revenu'>('depense');
   const [montantForm, setMontantForm] = useState('');
   const [categorieForm, setCategorieForm] = useState('Courses');
   const [sourceForm, setSourceForm] = useState('Business');
   const [descriptionForm, setDescriptionForm] = useState('');
   const [gaspillageForm, setGaspillageForm] = useState(false);
+  const [dateForm, setDateForm] = useState('');
   const [ajoutEnCours, setAjoutEnCours] = useState(false);
   const [erreurAjout, setErreurAjout] = useState<string | null>(null);
+  const refForm = useRef<HTMLDivElement>(null);
 
   const charger = useCallback(async () => {
     setChargement(true);
@@ -104,7 +152,44 @@ export default function Dashboard() {
     charger();
   }, [charger]);
 
-  async function ajouterOperation(e: React.FormEvent) {
+  function reinitialiserForm() {
+    setEditionId(null);
+    setMontantForm('');
+    setDescriptionForm('');
+    setGaspillageForm(false);
+    setDateForm('');
+    setErreurAjout(null);
+  }
+
+  function commencerEdition(op: Operation) {
+    if (op.table === 'depenses') {
+      const d = depenses.find((x) => x.id === op.id);
+      if (!d) return;
+      setTypeForm('depense');
+      setMontantForm(String(Number(d.montant)));
+      setCategorieForm(d.categorie);
+      setDescriptionForm(d.description ?? '');
+      setGaspillageForm(d.est_gaspillage);
+      setDateForm(versDatetimeLocal(d.date_transaction));
+    } else {
+      const r = revenus.find((x) => x.id === op.id);
+      if (!r) return;
+      setTypeForm('revenu');
+      setMontantForm(String(Number(r.montant)));
+      setSourceForm(r.source ?? 'Business');
+      setDescriptionForm(r.description ?? '');
+      setDateForm(versDatetimeLocal(r.date_reception));
+    }
+    setEditionId(op.id);
+    setErreurAjout(null);
+    setFormOuvert(true);
+    // Amène le formulaire à l'écran.
+    setTimeout(() => {
+      refForm.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
+
+  async function enregistrerOperation(e: React.FormEvent) {
     e.preventDefault();
     const montant = Number(montantForm);
     if (!Number.isFinite(montant) || montant <= 0) return;
@@ -119,22 +204,33 @@ export default function Dashboard() {
       return;
     }
 
-    const { error } =
-      typeForm === 'depense'
-        ? await supabase.from('depenses').insert({
-            user_id: user.id,
-            montant,
-            categorie: categorieForm,
-            description: descriptionForm.trim() || null,
-            est_gaspillage: gaspillageForm,
-            montant_arrondi_virtuel: arrondiVirtuel(montant),
-          })
-        : await supabase.from('revenus').insert({
-            user_id: user.id,
-            montant,
-            source: sourceForm,
-            description: descriptionForm.trim() || null,
-          });
+    const dateIso = dateForm ? new Date(dateForm).toISOString() : null;
+
+    let error: { message: string } | null = null;
+
+    if (typeForm === 'depense') {
+      const valeurs = {
+        montant,
+        categorie: categorieForm,
+        description: descriptionForm.trim() || null,
+        est_gaspillage: gaspillageForm,
+        montant_arrondi_virtuel: arrondiVirtuel(montant),
+        ...(dateIso ? { date_transaction: dateIso } : {}),
+      };
+      ({ error } = editionId
+        ? await supabase.from('depenses').update(valeurs).eq('id', editionId)
+        : await supabase.from('depenses').insert({ user_id: user.id, ...valeurs }));
+    } else {
+      const valeurs = {
+        montant,
+        source: sourceForm,
+        description: descriptionForm.trim() || null,
+        ...(dateIso ? { date_reception: dateIso } : {}),
+      };
+      ({ error } = editionId
+        ? await supabase.from('revenus').update(valeurs).eq('id', editionId)
+        : await supabase.from('revenus').insert({ user_id: user.id, ...valeurs }));
+    }
 
     if (error) {
       setErreurAjout(
@@ -143,9 +239,7 @@ export default function Dashboard() {
           : `Erreur : ${error.message}`,
       );
     } else {
-      setMontantForm('');
-      setDescriptionForm('');
-      setGaspillageForm(false);
+      reinitialiserForm();
       setFormOuvert(false);
       await charger();
     }
@@ -216,10 +310,16 @@ export default function Dashboard() {
   const couleurSolde =
     flux.soldeDisponible < 0 ? 'text-rose-400' : couleurFlux(flux.niveau);
 
+  let delaiCarte = 0;
+  const prochainDelai = () => `${(delaiCarte += 55) - 55}ms`;
+
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="space-y-4">
       {/* Solde disponible + jours d'avance */}
-      <section className="glass p-5">
+      <section
+        className="glass animate-pop-in p-5"
+        style={{ animationDelay: prochainDelai() }}
+      >
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-400">Argent disponible</p>
           <button
@@ -231,9 +331,14 @@ export default function Dashboard() {
             Actualiser
           </button>
         </div>
-        <p className={`mt-1 text-4xl font-bold tracking-tight ${couleurSolde}`}>
-          {chargement ? '…' : formaterMontant(flux.soldeDisponible)}
-        </p>
+        {chargement ? (
+          <p className="mt-1 text-4xl font-bold tracking-tight text-slate-500">…</p>
+        ) : (
+          <MontantAnime
+            valeur={flux.soldeDisponible}
+            className={`mt-1 block text-4xl font-bold tracking-tight ${couleurSolde}`}
+          />
+        )}
         <p className="mt-2 text-xs text-slate-400">
           {chargement ? (
             ' '
@@ -258,29 +363,36 @@ export default function Dashboard() {
       </section>
 
       {/* Entrées / Sorties du mois */}
-      <div className="grid grid-cols-2 gap-4">
+      <div
+        className="animate-pop-in grid grid-cols-2 gap-4"
+        style={{ animationDelay: prochainDelai() }}
+      >
         <section className="glass-soft p-4">
           <p className="flex items-center gap-1.5 text-xs text-slate-400">
             <TrendingUp size={13} className="text-emerald-400" />
             Entré ce mois
           </p>
-          <p className="mt-1 text-xl font-bold text-emerald-300">
-            +{formaterMontant(flux.entreesMois)}
-          </p>
+          <MontantAnime
+            valeur={flux.entreesMois}
+            prefixe="+"
+            className="mt-1 block text-xl font-bold text-emerald-300"
+          />
         </section>
         <section className="glass-soft p-4">
           <p className="flex items-center gap-1.5 text-xs text-slate-400">
             <TrendingDown size={13} className="text-rose-400" />
             Sorti ce mois
           </p>
-          <p className="mt-1 text-xl font-bold text-rose-300">
-            −{formaterMontant(flux.sortiesMois)}
-          </p>
+          <MontantAnime
+            valeur={flux.sortiesMois}
+            prefixe="−"
+            className="mt-1 block text-xl font-bold text-rose-300"
+          />
           {objectif > 0 && (
             <div className="mt-2">
               <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
                 <div
-                  className={`h-full rounded-full ${
+                  className={`h-full rounded-full transition-all duration-700 ${
                     flux.sortiesMois > objectif ? 'bg-rose-400' : 'bg-emerald-400'
                   }`}
                   style={{
@@ -297,17 +409,21 @@ export default function Dashboard() {
       </div>
 
       {/* Graphique des 14 derniers jours */}
-      <section className="glass p-5">
+      <section
+        className="glass animate-pop-in p-5"
+        style={{ animationDelay: prochainDelai() }}
+      >
         <p className="text-sm text-slate-400">Dépenses des 14 derniers jours</p>
         <div className="mt-3 flex h-24 items-end gap-1">
           {graphique.map((jour, i) => (
             <div key={i} className="flex flex-1 flex-col items-center gap-1">
               <div
-                className={`w-full rounded-t ${
+                className={`bar-anim w-full rounded-t ${
                   jour.total > 0 ? 'bg-accent/70' : 'bg-white/5'
                 }`}
                 style={{
                   height: `${Math.max(3, Math.round((jour.total / maxJour) * 100))}%`,
+                  animationDelay: `${150 + i * 35}ms`,
                 }}
                 title={`${jour.label} : ${formaterMontant(jour.total)}`}
               />
@@ -321,7 +437,10 @@ export default function Dashboard() {
 
       {/* Top catégories du mois */}
       {topCategories.length > 0 && (
-        <section className="glass p-5">
+        <section
+          className="glass animate-pop-in p-5"
+          style={{ animationDelay: prochainDelai() }}
+        >
           <p className="mb-3 text-sm text-slate-400">Où part l&apos;argent ce mois</p>
           <div className="space-y-2.5">
             {topCategories.map((c) => (
@@ -334,7 +453,7 @@ export default function Dashboard() {
                 </div>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                   <div
-                    className="h-full rounded-full bg-sky-400/80"
+                    className="h-full rounded-full bg-sky-400/80 transition-all duration-700"
                     style={{ width: `${c.part}%` }}
                   />
                 </div>
@@ -345,7 +464,10 @@ export default function Dashboard() {
       )}
 
       {/* Cagnotte des arrondis + Compteur de la honte */}
-      <div className="grid grid-cols-2 gap-4">
+      <div
+        className="animate-pop-in grid grid-cols-2 gap-4"
+        style={{ animationDelay: prochainDelai() }}
+      >
         <section className="glass-soft p-4">
           <p className="flex items-center gap-1.5 text-xs text-slate-400">
             <PiggyBank size={13} className="text-sky-400" />
@@ -368,15 +490,31 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* Ajout rapide : dépense OU entrée d'argent */}
-      <section className="glass p-4">
+      {/* Ajout / modification d'une opération */}
+      <section
+        ref={refForm}
+        className="glass animate-pop-in scroll-mt-24 p-4"
+        style={{ animationDelay: prochainDelai() }}
+      >
         <button
-          onClick={() => setFormOuvert((v) => !v)}
+          onClick={() => {
+            if (formOuvert) reinitialiserForm();
+            setFormOuvert((v) => !v);
+          }}
           className="flex w-full items-center justify-between text-sm"
         >
           <span className="flex items-center gap-2 font-semibold text-slate-100">
-            <Plus size={16} strokeWidth={2.4} className="text-accent-soft" />
-            Ajouter une opération
+            {editionId ? (
+              <>
+                <Pencil size={15} strokeWidth={2.2} className="text-accent-soft" />
+                Modifier l&apos;opération
+              </>
+            ) : (
+              <>
+                <Plus size={16} strokeWidth={2.4} className="text-accent-soft" />
+                Ajouter une opération
+              </>
+            )}
           </span>
           {formOuvert ? (
             <ChevronUp size={16} className="text-slate-500" />
@@ -386,12 +524,13 @@ export default function Dashboard() {
         </button>
 
         {formOuvert && (
-          <form onSubmit={ajouterOperation} className="mt-3 space-y-2">
+          <form onSubmit={enregistrerOperation} className="animate-slide-down mt-3 space-y-2">
             <div className="flex gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
               <button
                 type="button"
+                disabled={!!editionId}
                 onClick={() => setTypeForm('depense')}
-                className={`flex-1 rounded-lg py-2 text-sm transition ${
+                className={`flex-1 rounded-lg py-2 text-sm transition disabled:opacity-60 ${
                   typeForm === 'depense'
                     ? 'bg-rose-500/25 font-medium text-rose-200'
                     : 'text-slate-400'
@@ -401,8 +540,9 @@ export default function Dashboard() {
               </button>
               <button
                 type="button"
+                disabled={!!editionId}
                 onClick={() => setTypeForm('revenu')}
-                className={`flex-1 rounded-lg py-2 text-sm transition ${
+                className={`flex-1 rounded-lg py-2 text-sm transition disabled:opacity-60 ${
                   typeForm === 'revenu'
                     ? 'bg-emerald-500/25 font-medium text-emerald-200'
                     : 'text-slate-400'
@@ -459,6 +599,18 @@ export default function Dashboard() {
               className="glass-input"
             />
 
+            <div>
+              <label className="mb-1 block text-[11px] text-slate-500">
+                Date et heure {editionId ? '' : '(vide = maintenant)'}
+              </label>
+              <input
+                type="datetime-local"
+                value={dateForm}
+                onChange={(e) => setDateForm(e.target.value)}
+                className="glass-input"
+              />
+            </div>
+
             {typeForm === 'depense' && (
               <button
                 type="button"
@@ -484,19 +636,40 @@ export default function Dashboard() {
             )}
 
             {erreurAjout && <p className="text-xs text-rose-300">{erreurAjout}</p>}
+
             <button
               type="submit"
               disabled={ajoutEnCours}
               className="glass-button-accent w-full py-2.5 text-sm"
             >
-              {ajoutEnCours ? 'Enregistrement…' : 'Enregistrer'}
+              {ajoutEnCours
+                ? 'Enregistrement…'
+                : editionId
+                  ? 'Enregistrer les modifications'
+                  : 'Enregistrer'}
             </button>
+
+            {editionId && (
+              <button
+                type="button"
+                onClick={() => {
+                  reinitialiserForm();
+                  setFormOuvert(false);
+                }}
+                className="glass-button w-full py-2 text-sm text-slate-400"
+              >
+                Annuler la modification
+              </button>
+            )}
           </form>
         )}
       </section>
 
       {/* Dernières opérations */}
-      <section className="glass p-5">
+      <section
+        className="glass animate-pop-in p-5"
+        style={{ animationDelay: prochainDelai() }}
+      >
         <p className="mb-3 text-sm text-slate-400">Dernières opérations</p>
         {chargement ? (
           <p className="text-sm text-slate-500">Chargement…</p>
@@ -508,29 +681,37 @@ export default function Dashboard() {
         ) : (
           <>
             <ul className="space-y-2">
-              {operations.slice(0, nbOperationsAffichees).map((op) => (
+              {operations.slice(0, nbOperationsAffichees).map((op, i) => (
                 <li
                   key={`${op.table}-${op.id}`}
-                  className="flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2"
+                  className="animate-pop-in flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.06]"
+                  style={{ animationDelay: `${Math.min(i, 8) * 35}ms` }}
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm text-slate-200">{op.libelle}</p>
                     <p className="text-[11px] text-slate-500">
-                      {op.sousLibelle}
+                      {op.sousLibelle} · {formaterDateHeure(op.date)}
                       {op.gaspillage && (
                         <span className="ml-1 text-rose-400">· gaspillage</span>
                       )}
                     </p>
                   </div>
-                  <div className="ml-3 flex shrink-0 items-center gap-2">
+                  <div className="ml-3 flex shrink-0 items-center gap-1">
                     <span
-                      className={`font-medium ${
+                      className={`mr-1 font-medium ${
                         op.montant >= 0 ? 'text-emerald-300' : 'text-slate-100'
                       }`}
                     >
                       {op.montant >= 0 ? '+' : '−'}
                       {formaterMontant(Math.abs(op.montant))}
                     </span>
+                    <button
+                      onClick={() => commencerEdition(op)}
+                      className="rounded-md p-1 text-slate-600 transition hover:bg-white/10 hover:text-slate-200"
+                      title="Modifier cette opération"
+                    >
+                      <Pencil size={13} strokeWidth={2.2} />
+                    </button>
                     <button
                       onClick={() => supprimerOperation(op)}
                       className="rounded-md p-1 text-slate-600 transition hover:bg-rose-500/20 hover:text-rose-300"

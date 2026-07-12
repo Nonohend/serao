@@ -230,6 +230,25 @@ export function couleurFlux(niveau: FluxTresorerie['niveau']): string {
   }
 }
 
+/** Date + heure courtes en français — ex : « 11 juil. 14:30 ». */
+export function formaterDateHeure(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(iso));
+}
+
+/** Convertit une date ISO vers le format des champs <input type="datetime-local">. */
+export function versDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
+}
+
 /** Formatage monétaire en Ariary (MGA) — ex : 1 250 000 Ar. */
 export function formaterMontant(montant: number): string {
   const nombre = new Intl.NumberFormat('fr-FR', {

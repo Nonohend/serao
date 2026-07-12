@@ -61,6 +61,28 @@ body {
   }
 }
 
+/* Croissance des barres du graphique depuis la base. */
+@keyframes grow-bar {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.bar-anim {
+  transform-origin: bottom;
+  animation: grow-bar 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Sélecteurs date/heure natifs rendus en sombre (iOS/Android). */
+input[type='datetime-local'],
+input[type='date'],
+input[type='time'] {
+  color-scheme: dark;
+}
+
 /* Barre de défilement discrète et cohérente avec le thème sombre. */
 ::-webkit-scrollbar {
   width: 8px;

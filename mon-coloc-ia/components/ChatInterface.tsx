@@ -219,7 +219,7 @@ export default function ChatInterface() {
           return (
             <div
               key={m.id}
-              className={`flex ${
+              className={`animate-pop-in flex ${
                 m.role === 'user' ? 'justify-end' : 'justify-start'
               }`}
             >
