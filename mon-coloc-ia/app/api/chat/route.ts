@@ -47,7 +47,7 @@ function construireSystemPrompt(
         .join('\n')
     : '- aucun projet déclaré pour le moment';
   const dernieresDepenses = depenses.slice(0, 5);
-  const flux = calculerFlux(depenses, revenus);
+  const flux = calculerFlux(depenses, revenus, Number(profil?.solde_initial ?? 0));
   const totalReserve = objectifs.reduce(
     (acc, o) => acc + Number(o.montant_actuel),
     0,
@@ -142,6 +142,7 @@ RÈGLES :
 - Quand l'utilisateur raconte ce qu'il fait ou a fait (sortie, sport, cuisine, projet, événement…), note-le avec l'outil "enregistrerActivite" pour t'en souvenir, puis réagis normalement.
 - Quand l'utilisateur demande combien il peut/devrait dépenser, appuie-toi sur la PRÉDICTION ci-dessus (budget conseillé par jour et reste du jour).
 - Quand l'utilisateur veut mettre de côté, créer une réserve ou épargner pour quelque chose (ex : "mets 100 000 Ar de côté pour le loyer"), utilise l'outil "gererObjectif".
+- Quand l'utilisateur te donne son SOLDE RÉEL (ex : "en vrai il me reste 800 000 Ar", "mon compte MVola affiche 350 000 Ar et j'ai 50 000 en cash"), utilise l'outil "ajusterSolde" avec le total pour recaler l'app — surtout après la saisie d'un historique ancien.
 - Quand l'utilisateur parle d'un nouveau projet business ("je lance un élevage de poulets", "nouveau projet : revente de téléphones"), utilise l'outil "gererProjet" pour le créer. Quand une dépense ou une entrée concerne un projet existant, renseigne le paramètre "projet" des outils d'enregistrement — tu peux analyser la rentabilité de chaque projet (investi vs rapporté).
 - Félicite les bonnes rentrées, alerte gentiment quand les jours d'avance baissent dangereusement (< 7 jours), et conseille de mettre de côté quand une grosse somme rentre.
 - Quand l'utilisateur demande des prix réels, des promotions locales, ou des informations d'actualité, utilise l'outil "rechercheWeb".
@@ -400,6 +401,36 @@ export async function POST(req: Request) {
             return `Impossible d'enregistrer l'entrée d'argent : ${error.message}.`;
           }
           return `Entrée d'argent enregistrée : ${formaterMontant(montant)} (${source}).`;
+        },
+      }),
+      ajusterSolde: tool({
+        description:
+          "Recale le solde calculé par l'app sur le solde RÉEL de l'utilisateur (mobile money + cash), sans modifier l'historique. À utiliser quand l'utilisateur donne son vrai solde, notamment après la saisie d'anciennes opérations.",
+        parameters: z.object({
+          solde_reel: z
+            .number()
+            .describe("Solde réel total actuel de l'utilisateur en Ariary (Ar)."),
+        }),
+        execute: async ({ solde_reel }) => {
+          const totalEntrees = ((tousRevenus ?? []) as Revenu[]).reduce(
+            (acc, r) => acc + Number(r.montant),
+            0,
+          );
+          const totalSorties = ((toutesDepenses ?? []) as Depense[]).reduce(
+            (acc, d) => acc + Number(d.montant),
+            0,
+          );
+          const nouveauSoldeInitial =
+            Math.round((solde_reel - (totalEntrees - totalSorties)) * 100) / 100;
+
+          const { error } = await supabase
+            .from('profil_utilisateur')
+            .update({ solde_initial: nouveauSoldeInitial })
+            .eq('id', user.id);
+          if (error) {
+            return `Impossible d'ajuster le solde : ${error.message}. La migration v6 est peut-être manquante.`;
+          }
+          return `Solde recalé : l'app affiche désormais ${formaterMontant(solde_reel)} de disponible, sans toucher à l'historique.`;
         },
       }),
       gererProjet: tool({

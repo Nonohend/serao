@@ -126,6 +126,11 @@ export default function Dashboard() {
   const [projFormOuvert, setProjFormOuvert] = useState(false);
   const [projNom, setProjNom] = useState('');
   const [projErreur, setProjErreur] = useState<string | null>(null);
+
+  // Ajustement du solde réel.
+  const [ajustOuvert, setAjustOuvert] = useState(false);
+  const [ajustMontant, setAjustMontant] = useState('');
+  const [ajustErreur, setAjustErreur] = useState<string | null>(null);
   const [profil, setProfil] = useState<ProfilUtilisateur | null>(null);
   const [chargement, setChargement] = useState(true);
   const [nbOperationsAffichees, setNbOperationsAffichees] = useState(8);
@@ -424,7 +429,40 @@ export default function Dashboard() {
     return m;
   }, [projets]);
 
-  const flux = calculerFlux(depenses, revenus);
+  const soldeInitial = Number(profil?.solde_initial ?? 0);
+
+  async function ajusterSolde(e: React.FormEvent) {
+    e.preventDefault();
+    const soldeReel = Number(ajustMontant);
+    if (!Number.isFinite(soldeReel)) return;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Le solde calculé sans le solde de départ = entrées − sorties.
+    const fluxBrut = flux.soldeDisponible - soldeInitial;
+    const nouveauSoldeInitial = Math.round((soldeReel - fluxBrut) * 100) / 100;
+
+    const { error } = await supabase
+      .from('profil_utilisateur')
+      .update({ solde_initial: nouveauSoldeInitial })
+      .eq('id', user.id);
+
+    setAjustErreur(
+      error
+        ? 'Impossible d’ajuster : exécute la migration v6 dans Supabase (SQL Editor).'
+        : null,
+    );
+    if (!error) {
+      setAjustOuvert(false);
+      setAjustMontant('');
+      await charger();
+    }
+  }
+
+  const flux = calculerFlux(depenses, revenus, soldeInitial);
   const totalReserve = objectifs.reduce(
     (acc, o) => acc + Number(o.montant_actuel),
     0,
@@ -511,15 +549,57 @@ export default function Dashboard() {
       >
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-400">Argent disponible</p>
-          <button
-            onClick={charger}
-            className="flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-white"
-            aria-label="Rafraîchir"
-          >
-            <RotateCw size={13} strokeWidth={2} />
-            Actualiser
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setAjustOuvert((v) => !v);
+                setAjustMontant('');
+                setAjustErreur(null);
+              }}
+              className="flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-white"
+              title="Recaler le solde affiché sur ton solde réel"
+            >
+              <Pencil size={12} strokeWidth={2} />
+              Ajuster
+            </button>
+            <button
+              onClick={charger}
+              className="flex items-center gap-1.5 text-xs text-slate-400 transition hover:text-white"
+              aria-label="Rafraîchir"
+            >
+              <RotateCw size={13} strokeWidth={2} />
+              Actualiser
+            </button>
+          </div>
         </div>
+
+        {ajustOuvert && (
+          <form
+            onSubmit={ajusterSolde}
+            className="animate-slide-down mt-3 space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"
+          >
+            <label className="block text-[11px] text-slate-500">
+              Combien as-tu réellement en tout (mobile money + cash) ? L&apos;app
+              se recale sans toucher à ton historique.
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                inputMode="numeric"
+                value={ajustMontant}
+                onChange={(e) => setAjustMontant(e.target.value)}
+                placeholder="Solde réel actuel"
+                className="glass-input flex-1"
+                required
+              />
+              <span className="flex items-center text-slate-400">Ar</span>
+            </div>
+            {ajustErreur && <p className="text-xs text-rose-300">{ajustErreur}</p>}
+            <button type="submit" className="glass-button-accent w-full py-2 text-sm">
+              Recaler mon solde
+            </button>
+          </form>
+        )}
         {chargement ? (
           <p className="mt-1 text-4xl font-bold tracking-tight text-slate-500">…</p>
         ) : (

@@ -11,6 +11,7 @@ const LIBELLE_OUTIL: Record<string, string> = {
   enregistrerRevenu: 'Entrée d’argent enregistrée',
   gererObjectif: 'Objectif mis à jour',
   gererProjet: 'Projet mis à jour',
+  ajusterSolde: 'Solde recalé',
   enregistrerActivite: 'Activité notée',
 };
 

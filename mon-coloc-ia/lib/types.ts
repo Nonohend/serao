@@ -4,6 +4,7 @@ export interface ProfilUtilisateur {
   id: string;
   updated_at: string | null;
   budget_mensuel_cible: number;
+  solde_initial?: number;
   a_un_frigo: boolean;
   a_un_congelo: boolean;
   a_des_plaques: boolean;

@@ -140,18 +140,22 @@ export function estDansLeMois(dateIso: string, reference = new Date()): boolean 
 
 /**
  * Trésorerie adaptée aux revenus irréguliers :
- *   solde = total des entrées − total des sorties (depuis le début) ;
+ *   solde = solde de départ + total des entrées − total des sorties ;
  *   runway = combien de jours ce solde tient au rythme de dépense moyen
  *   des 30 derniers jours.
+ * Le solde de départ permet de recaler le solde réel quand on saisit
+ * a posteriori de vieilles opérations (ex : historique d'un projet).
  */
 export function calculerFlux(
   depenses: Depense[],
   revenus: Revenu[],
+  soldeInitial = 0,
   reference = new Date(),
 ): FluxTresorerie {
   const totalEntrees = revenus.reduce((acc, r) => acc + Number(r.montant), 0);
   const totalSorties = depenses.reduce((acc, d) => acc + Number(d.montant), 0);
-  const soldeDisponible = Math.round((totalEntrees - totalSorties) * 100) / 100;
+  const soldeDisponible =
+    Math.round((soldeInitial + totalEntrees - totalSorties) * 100) / 100;
 
   const entreesMois =
     Math.round(
