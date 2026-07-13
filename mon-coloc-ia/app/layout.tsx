@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   title: 'Mon Coloc IA',
   description:
     'Budget, anti-gaspillage et aide à la consommation — ton coloc virtuel intelligent.',
+  appleWebApp: {
+    capable: true,
+    title: 'Mon Coloc IA',
+    statusBarStyle: 'black-translucent',
+  },
 };
 
 export const viewport: Viewport = {

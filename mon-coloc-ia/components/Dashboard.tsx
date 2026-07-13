@@ -27,8 +27,9 @@ import {
   depensesAujourdhui,
   depensesDuMois,
   depensesParJour,
-  formaterDateHeure,
+  formaterHeure,
   formaterMontant,
+  libelleJour,
   versDatetimeLocal,
 } from '@/lib/calculs';
 import type {
@@ -133,6 +134,7 @@ export default function Dashboard() {
   const [ajustErreur, setAjustErreur] = useState<string | null>(null);
   const [profil, setProfil] = useState<ProfilUtilisateur | null>(null);
   const [chargement, setChargement] = useState(true);
+  const [premierChargement, setPremierChargement] = useState(true);
   const [nbOperationsAffichees, setNbOperationsAffichees] = useState(8);
 
   // Formulaire objectifs.
@@ -203,6 +205,7 @@ export default function Dashboard() {
     setProjetsDisponibles(!projetsRes.error);
     setProfil((profilRes.data ?? null) as ProfilUtilisateur | null);
     setChargement(false);
+    setPremierChargement(false);
   }, [supabase]);
 
   useEffect(() => {
@@ -540,6 +543,45 @@ export default function Dashboard() {
   let delaiCarte = 0;
   const prochainDelai = () => `${(delaiCarte += 55) - 55}ms`;
 
+  // Premier chargement : squelettes animés plutôt qu'un texte brut.
+  if (premierChargement) {
+    return (
+      <div className="space-y-4">
+        <div className="glass p-5">
+          <div className="skeleton h-4 w-36" />
+          <div className="skeleton mt-3 h-10 w-52" />
+          <div className="skeleton mt-3 h-3 w-64" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {[0, 1].map((i) => (
+            <div key={i} className="glass-soft p-4">
+              <div className="skeleton h-3 w-24" />
+              <div className="skeleton mt-2 h-7 w-28" />
+            </div>
+          ))}
+        </div>
+        <div className="glass p-5">
+          <div className="skeleton h-4 w-48" />
+          <div className="mt-3 flex h-24 items-end gap-1">
+            {Array.from({ length: 14 }).map((_, i) => (
+              <div
+                key={i}
+                className="skeleton flex-1"
+                style={{ height: `${18 + ((i * 37) % 70)}%` }}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="glass p-5">
+          <div className="skeleton h-4 w-40" />
+          <div className="skeleton mt-3 h-11 w-full" />
+          <div className="skeleton mt-2 h-11 w-full" />
+          <div className="skeleton mt-2 h-11 w-full" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Solde disponible + jours d'avance */}
@@ -594,6 +636,11 @@ export default function Dashboard() {
               />
               <span className="flex items-center text-slate-400">Ar</span>
             </div>
+            {Number(ajustMontant) > 0 && (
+              <p className="text-[11px] text-slate-500">
+                = {formaterMontant(Number(ajustMontant))}
+              </p>
+            )}
             {ajustErreur && <p className="text-xs text-rose-300">{ajustErreur}</p>}
             <button type="submit" className="glass-button-accent w-full py-2 text-sm">
               Recaler mon solde
@@ -1146,18 +1193,25 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min={1}
-                inputMode="numeric"
-                value={montantForm}
-                onChange={(e) => setMontantForm(e.target.value)}
-                placeholder="Montant"
-                className="glass-input flex-1"
-                required
-              />
-              <span className="flex items-center text-slate-400">Ar</span>
+            <div>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={montantForm}
+                  onChange={(e) => setMontantForm(e.target.value)}
+                  placeholder="Montant"
+                  className="glass-input flex-1"
+                  required
+                />
+                <span className="flex items-center text-slate-400">Ar</span>
+              </div>
+              {Number(montantForm) > 0 && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  = {formaterMontant(Number(montantForm))}
+                </p>
+              )}
             </div>
 
             {typeForm === 'depense' ? (
@@ -1291,17 +1345,28 @@ export default function Dashboard() {
           </p>
         ) : (
           <>
-            <ul className="space-y-2">
-              {operations.slice(0, nbOperationsAffichees).map((op, i) => (
-                <li
-                  key={`${op.table}-${op.id}`}
-                  className="animate-pop-in flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.06]"
-                  style={{ animationDelay: `${Math.min(i, 8) * 35}ms` }}
-                >
+            <div className="space-y-2">
+              {(() => {
+                let dernierJour = '';
+                return operations.slice(0, nbOperationsAffichees).map((op, i) => {
+                  const jour = libelleJour(op.date);
+                  const nouvelleJournee = jour !== dernierJour;
+                  dernierJour = jour;
+                  return (
+                    <div key={`${op.table}-${op.id}`}>
+                      {nouvelleJournee && (
+                        <p className="mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 first:mt-0">
+                          {jour}
+                        </p>
+                      )}
+                      <div
+                        className="animate-pop-in flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.06]"
+                        style={{ animationDelay: `${Math.min(i, 8) * 35}ms` }}
+                      >
                   <div className="min-w-0">
                     <p className="truncate text-sm text-slate-200">{op.libelle}</p>
                     <p className="text-[11px] text-slate-500">
-                      {op.sousLibelle} · {formaterDateHeure(op.date)}
+                      {op.sousLibelle} · {formaterHeure(op.date)}
                       {op.gaspillage && (
                         <span className="ml-1 text-rose-400">· gaspillage</span>
                       )}
@@ -1331,9 +1396,12 @@ export default function Dashboard() {
                       <X size={14} strokeWidth={2.2} />
                     </button>
                   </div>
-                </li>
-              ))}
-            </ul>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
             {operations.length > nbOperationsAffichees && (
               <button
                 onClick={() => setNbOperationsAffichees((n) => n + 10)}

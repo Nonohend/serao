@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
+  Eye,
+  EyeOff,
   Home,
   MessageCircle,
   Package,
@@ -44,6 +46,7 @@ function Auth() {
   const [mode, setMode] = useState<'connexion' | 'inscription'>('connexion');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [afficherMdp, setAfficherMdp] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
@@ -85,16 +88,26 @@ function Auth() {
           className="glass-input"
           autoComplete="email"
         />
-        <input
-          type="password"
-          required
-          minLength={6}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Mot de passe"
-          className="glass-input"
-          autoComplete={mode === 'connexion' ? 'current-password' : 'new-password'}
-        />
+        <div className="relative">
+          <input
+            type={afficherMdp ? 'text' : 'password'}
+            required
+            minLength={6}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Mot de passe"
+            className="glass-input pr-11"
+            autoComplete={mode === 'connexion' ? 'current-password' : 'new-password'}
+          />
+          <button
+            type="button"
+            onClick={() => setAfficherMdp((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-200"
+            aria-label={afficherMdp ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+          >
+            {afficherMdp ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
 
         {message && <p className="text-sm text-amber-300">{message}</p>}
 

@@ -35,9 +35,12 @@ const defautProfil: Partial<ProfilUtilisateur> = {
   niveau_energie_soir: 3,
 };
 
+const VERSION_APP = '2.0';
+
 export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
   const supabase = createClient();
   const [profil, setProfil] = useState<Partial<ProfilUtilisateur>>(defautProfil);
+  const [emailUtilisateur, setEmailUtilisateur] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
   const [enregistrement, setEnregistrement] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,6 +53,7 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
       setChargement(false);
       return;
     }
+    setEmailUtilisateur(user.email ?? null);
     const { data } = await supabase
       .from('profil_utilisateur')
       .select('*')
@@ -209,6 +213,19 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
       >
         {enregistrement ? 'Enregistrement…' : 'Enregistrer le profil'}
       </button>
+
+      <section className="glass p-5">
+        <p className="text-sm text-slate-300">À propos</p>
+        <div className="mt-2 space-y-1.5 text-xs text-slate-500">
+          {emailUtilisateur && <p>Connecté : {emailUtilisateur}</p>}
+          <p>Mon Coloc IA · version {VERSION_APP}</p>
+          <p>
+            Astuce : ajoute l&apos;app à ton écran d&apos;accueil (Partager →
+            « Sur l&apos;écran d&apos;accueil ») pour l&apos;utiliser en plein
+            écran, comme une vraie app.
+          </p>
+        </div>
+      </section>
 
       {onLogout && (
         <button

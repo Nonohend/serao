@@ -279,6 +279,29 @@ export function formaterDateHeure(iso: string): string {
   }).format(new Date(iso));
 }
 
+/** Heure seule — ex : « 14:30 ». */
+export function formaterHeure(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(iso));
+}
+
+/** Libellé de jour relatif — « Aujourd'hui », « Hier », sinon date complète. */
+export function libelleJour(iso: string, maintenant = new Date()): string {
+  const d = new Date(iso);
+  const debut = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffJours = Math.round((debut(maintenant) - debut(d)) / 86400000);
+  if (diffJours === 0) return "Aujourd'hui";
+  if (diffJours === 1) return 'Hier';
+  return new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(d);
+}
+
 /** Convertit une date ISO vers le format des champs <input type="datetime-local">. */
 export function versDatetimeLocal(iso: string): string {
   const d = new Date(iso);

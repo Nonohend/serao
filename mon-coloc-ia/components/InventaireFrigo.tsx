@@ -276,7 +276,11 @@ export default function InventaireFrigo() {
 
         <div className="mt-3">
           {chargement ? (
-            <p className="text-sm text-slate-500">Chargement…</p>
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="skeleton h-11 w-full" />
+              ))}
+            </div>
           ) : itemsAffiches.length === 0 ? (
             <p className="text-sm text-slate-500">
               {filtre === 'tous'

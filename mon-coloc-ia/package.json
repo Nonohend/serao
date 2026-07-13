@@ -1,6 +1,6 @@
 {
   "name": "mon-coloc-ia",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Mon Coloc IA — budget, anti-gaspillage & aide à la consommation (Next.js + Supabase + Vercel AI SDK)",
   "scripts": {
