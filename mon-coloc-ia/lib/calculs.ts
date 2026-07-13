@@ -197,6 +197,46 @@ export function calculerFlux(
   };
 }
 
+export interface MoisResume {
+  cle: string; // AAAA-MM
+  label: string; // « juil. »
+  entrees: number;
+  sorties: number;
+  net: number;
+}
+
+/** Entrées / sorties / net agrégés par mois sur les N derniers mois. */
+export function historiqueMensuel(
+  depenses: Depense[],
+  revenus: Revenu[],
+  nbMois = 6,
+  reference = new Date(),
+): MoisResume[] {
+  const mois: MoisResume[] = [];
+  for (let i = nbMois - 1; i >= 0; i--) {
+    const d = new Date(reference.getFullYear(), reference.getMonth() - i, 1);
+    const cle = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const meme = (iso: string) => {
+      const t = new Date(iso);
+      return t.getFullYear() === d.getFullYear() && t.getMonth() === d.getMonth();
+    };
+    const entrees = revenus
+      .filter((r) => meme(r.date_reception))
+      .reduce((acc, r) => acc + Number(r.montant), 0);
+    const sorties = depenses
+      .filter((x) => meme(x.date_transaction))
+      .reduce((acc, x) => acc + Number(x.montant), 0);
+    mois.push({
+      cle,
+      label: new Intl.DateTimeFormat('fr-FR', { month: 'short' }).format(d),
+      entrees: Math.round(entrees * 100) / 100,
+      sorties: Math.round(sorties * 100) / 100,
+      net: Math.round((entrees - sorties) * 100) / 100,
+    });
+  }
+  return mois;
+}
+
 /** Total des dépenses par jour sur les N derniers jours (pour le graphique). */
 export function depensesParJour(
   depenses: Depense[],

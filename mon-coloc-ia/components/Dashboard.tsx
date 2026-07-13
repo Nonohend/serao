@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BarChart3,
+  Bell,
   Briefcase,
   ChevronDown,
   ChevronUp,
+  Download,
   Flame,
   Pencil,
   PiggyBank,
@@ -27,8 +30,10 @@ import {
   depensesAujourdhui,
   depensesDuMois,
   depensesParJour,
+  formaterDateHeure,
   formaterHeure,
   formaterMontant,
+  historiqueMensuel,
   libelleJour,
   versDatetimeLocal,
 } from '@/lib/calculs';
@@ -540,6 +545,79 @@ export default function Dashboard() {
   const couleurSolde =
     flux.soldeDisponible < 0 ? 'text-rose-400' : couleurFlux(flux.niveau);
 
+  // Historique mensuel (6 mois).
+  const historique = useMemo(
+    () => historiqueMensuel(depenses, revenus, 6),
+    [depenses, revenus],
+  );
+  const maxMois = Math.max(
+    1,
+    ...historique.map((m) => Math.max(m.entrees, m.sorties)),
+  );
+
+  // Alertes intelligentes affichées en haut du tableau de bord.
+  const alertes: { ton: 'rouge' | 'ambre'; texte: string }[] = [];
+  if (!chargement) {
+    if (flux.soldeDisponible < 0) {
+      alertes.push({
+        ton: 'rouge',
+        texte: `Ton solde est négatif (${formaterMontant(flux.soldeDisponible)}). Ajoute tes entrées manquantes ou ajuste ton solde réel.`,
+      });
+    } else if (flux.runwayJours !== null && flux.runwayJours < 7) {
+      alertes.push({
+        ton: 'rouge',
+        texte: `Attention : il te reste ≈ ${flux.runwayJours} jour(s) d'avance. Lève le pied sur les dépenses.`,
+      });
+    } else if (flux.runwayJours !== null && flux.runwayJours < 21) {
+      alertes.push({
+        ton: 'ambre',
+        texte: `Tes jours d'avance baissent (≈ ${flux.runwayJours}). Garde un œil sur ton rythme.`,
+      });
+    }
+    if (conseil.parJour > 0 && duJour > conseil.parJour) {
+      alertes.push({
+        ton: 'ambre',
+        texte: `Tu as dépassé ton budget conseillé du jour (${formaterMontant(duJour)} / ${formaterMontant(conseil.parJour)}).`,
+      });
+    }
+  }
+
+  // Export CSV de toutes les opérations.
+  function exporterCsv() {
+    const echap = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const lignes = [
+      ['Date', 'Type', 'Montant (Ar)', 'Catégorie/Source', 'Description', 'Projet', 'Gaspillage'],
+      ...operations.map((op) => {
+        const d = op.table === 'depenses'
+          ? depenses.find((x) => x.id === op.id)
+          : revenus.find((x) => x.id === op.id);
+        const projetNom =
+          d?.projet_id && nomsProjets.has(d.projet_id)
+            ? nomsProjets.get(d.projet_id)!
+            : '';
+        return [
+          formaterDateHeure(op.date),
+          op.montant >= 0 ? 'Entrée' : 'Dépense',
+          String(Math.abs(op.montant)),
+          op.table === 'depenses'
+            ? (d as Depense | undefined)?.categorie ?? ''
+            : (d as Revenu | undefined)?.source ?? '',
+          (d as Depense | Revenu | undefined)?.description ?? '',
+          projetNom ?? '',
+          op.gaspillage ? 'oui' : '',
+        ];
+      }),
+    ];
+    const csv = '﻿' + lignes.map((l) => l.map(echap).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mon-coloc-ia-operations-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   let delaiCarte = 0;
   const prochainDelai = () => `${(delaiCarte += 55) - 55}ms`;
 
@@ -584,6 +662,25 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
+      {/* Alertes intelligentes */}
+      {alertes.length > 0 && (
+        <div className="space-y-2">
+          {alertes.map((a, i) => (
+            <div
+              key={i}
+              className={`animate-slide-down flex items-start gap-2.5 rounded-2xl border p-3 text-sm ${
+                a.ton === 'rouge'
+                  ? 'border-rose-400/30 bg-rose-500/15 text-rose-200'
+                  : 'border-amber-400/30 bg-amber-500/15 text-amber-200'
+              }`}
+            >
+              <Bell size={15} className="mt-0.5 shrink-0" />
+              <p>{a.texte}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Solde disponible + jours d'avance */}
       <section
         className="glass animate-pop-in p-5"
@@ -799,6 +896,60 @@ export default function Dashboard() {
               )}
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Historique mensuel : entrées vs sorties sur 6 mois */}
+      <section
+        className="glass animate-pop-in p-5"
+        style={{ animationDelay: prochainDelai() }}
+      >
+        <p className="flex items-center gap-1.5 text-sm text-slate-400">
+          <BarChart3 size={14} className="text-accent-soft" />
+          Historique — 6 derniers mois
+        </p>
+        <div className="mt-4 flex items-end justify-between gap-2">
+          {historique.map((m, i) => (
+            <div key={m.cle} className="flex flex-1 flex-col items-center gap-1">
+              <div className="flex h-24 w-full items-end justify-center gap-0.5">
+                <div
+                  className="bar-anim w-1/2 rounded-t bg-emerald-400/70"
+                  style={{
+                    height: `${Math.max(2, Math.round((m.entrees / maxMois) * 100))}%`,
+                    animationDelay: `${120 + i * 45}ms`,
+                  }}
+                  title={`Entré : ${formaterMontant(m.entrees)}`}
+                />
+                <div
+                  className="bar-anim w-1/2 rounded-t bg-rose-400/70"
+                  style={{
+                    height: `${Math.max(2, Math.round((m.sorties / maxMois) * 100))}%`,
+                    animationDelay: `${140 + i * 45}ms`,
+                  }}
+                  title={`Sorti : ${formaterMontant(m.sorties)}`}
+                />
+              </div>
+              <span className="text-[10px] capitalize text-slate-500">{m.label}</span>
+              <span
+                className={`text-[9px] font-medium ${
+                  m.net >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {m.net >= 0 ? '+' : '−'}
+                {Math.abs(m.net) >= 1000
+                  ? `${Math.round(Math.abs(m.net) / 1000)}k`
+                  : Math.round(Math.abs(m.net))}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-slate-500">
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-emerald-400/70" /> Entrées
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-rose-400/70" /> Sorties
+          </span>
         </div>
       </section>
 
@@ -1335,7 +1486,19 @@ export default function Dashboard() {
         className="glass animate-pop-in p-5"
         style={{ animationDelay: prochainDelai() }}
       >
-        <p className="mb-3 text-sm text-slate-400">Dernières opérations</p>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm text-slate-400">Dernières opérations</p>
+          {operations.length > 0 && (
+            <button
+              onClick={exporterCsv}
+              className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 transition hover:text-white"
+              title="Exporter toutes les opérations en CSV (Excel)"
+            >
+              <Download size={13} strokeWidth={2} />
+              Exporter
+            </button>
+          )}
+        </div>
         {chargement ? (
           <p className="text-sm text-slate-500">Chargement…</p>
         ) : operations.length === 0 ? (
