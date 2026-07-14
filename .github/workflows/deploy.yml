@@ -3,6 +3,10 @@ name: Deploy SERAO to GitHub Pages
 on:
   push:
     branches: [main]
+    # Les changements Mon Coloc IA (déployé sur Vercel) ne doivent pas
+    # redéclencher le déploiement du site SERAO.
+    paths-ignore:
+      - 'mon-coloc-ia/**'
   workflow_dispatch:
 
 permissions:

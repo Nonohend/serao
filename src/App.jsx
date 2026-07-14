@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import L from 'leaflet';
 import { supabase, SITE_URL, withTimeout } from './lib/supabase';
+import { Icon } from './icons.jsx';
 
 /* ─ STORAGE (legacy — being migrated to Supabase) ─ */
 const ls={
@@ -33,26 +33,26 @@ const initials=n=>n.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
 const avColor=n=>{const c=['linear-gradient(135deg,rgba(20,123,99,0.4),rgba(6,214,176,0.2))','linear-gradient(135deg,rgba(245,159,10,0.4),rgba(251,191,36,0.2))','linear-gradient(135deg,rgba(96,165,250,0.4),rgba(147,197,253,0.2))','linear-gradient(135deg,rgba(139,92,246,0.4),rgba(167,139,250,0.2))'];let h=0;for(let i=0;i<n.length;i++)h+=n.charCodeAt(i);return c[h%c.length];};
 
 /* ─ DATA ─ */
-const PUB_CHANNELS=[{id:'general',name:'# Général',icon:'💬',desc:'Discussion générale'},{id:'annonces',name:'# Annonces',icon:'📢',desc:'Officiel'},{id:'vanille',name:'# Vanille',icon:'🫛',desc:'Produits vanille'},{id:'artisanat',name:'# Artisanat',icon:'🎨',desc:'Artisanat'},{id:'marche',name:'# Marché',icon:'🛍️',desc:'Achats & ventes'}];
+const PUB_CHANNELS=[{id:'general',name:'# Général',icon:'message',desc:'Discussion générale'},{id:'annonces',name:'# Annonces',icon:'megaphone',desc:'Officiel'},{id:'vanille',name:'# Vanille',icon:'sprout',desc:'Produits vanille'},{id:'artisanat',name:'# Artisanat',icon:'palette',desc:'Artisanat'},{id:'marche',name:'# Marché',icon:'shopping-bag',desc:'Achats & ventes'}];
 const DEF_ARTICLES=[{id:1,min:8,date:'2026-02-15',auteur:'Ravo Andriamahefa',titre:'Top 10 des produits artisanaux malagasy',extrait:"Découvrez les trésors de l'artisanat malgache, des sculptures en palissandre aux tissages en soie sauvage.",tags:['artisanat','guide','culture'],publie:true},{id:2,min:6,date:'2026-02-10',auteur:'Nirina Rakoto',titre:'Pourquoi la vanille de Madagascar est unique',extrait:"La vanille bourbon de Madagascar représente 80% de la production mondiale. Découvrez ce qui la rend si spéciale.",tags:['vanille','agriculture'],publie:true},{id:3,min:5,date:'2026-01-28',auteur:'Fanja Rasoa',titre:'Produits naturels malagasy pour la peau',extrait:"Huile de baobab, beurre de karité... Les secrets beauté de Madagascar.",tags:['cosmétiques','beauté','naturel'],publie:true},{id:4,min:7,date:'2026-01-20',auteur:'Hery Rajoelina',titre:"Reconnaître un artisanat authentique",extrait:"Les clés pour distinguer les véritables créations artisanales des imitations industrielles.",tags:['artisanat','guide'],publie:true}];
-const CATS=[{emoji:'🫛',nom:'Vanille',count:5},{emoji:'🎨',nom:'Artisanat',count:4},{emoji:'🌶️',nom:'Épices',count:3},{emoji:'🧴',nom:'Cosmétiques',count:3},{emoji:'🧵',nom:'Textiles',count:3},{emoji:'💎',nom:'Bijoux',count:2}];
-const WHY=[{icon:'🛡️',t:'Authenticité garantie',b:'Chaque produit vérifié par nos experts et notre IA avancée.'},{icon:'🚀',t:'Livraison ultra-rapide',b:'SERAO Delivery : domicile, point relais ou retrait vendeur.'},{icon:'🌿',t:'Impact local direct',b:"Soutenez directement les artisans et producteurs malagasy."}];
-const VENDORS_D=[{emoji:'🌿',nom:'Vanille de Sava',ville:'SAVA',note:4.9,nb:5},{emoji:'🎭',nom:'Atelier Zafindraony',ville:'Antananarivo',note:4.7,nb:4},{emoji:'🌺',nom:'Ravinala Cosmetics',ville:'Toamasina',note:4.8,nb:3}];
+const CATS=[{icon:'sprout',nom:'Vanille',count:5},{icon:'palette',nom:'Artisanat',count:4},{icon:'flame',nom:'Épices',count:3},{icon:'droplet',nom:'Cosmétiques',count:3},{icon:'scissors',nom:'Textiles',count:3},{icon:'gem',nom:'Bijoux',count:2}];
+const WHY=[{icon:'shield-check',t:'Authenticité garantie',b:'Chaque produit vérifié par nos experts et notre IA avancée.'},{icon:'rocket',t:'Livraison ultra-rapide',b:'SERAO Delivery : domicile, point relais ou retrait vendeur.'},{icon:'leaf',t:'Impact local direct',b:"Soutenez directement les artisans et producteurs malagasy."}];
+const VENDORS_D=[{icon:'sprout',nom:'Vanille de Sava',ville:'SAVA',note:4.9,nb:5},{icon:'palette',nom:'Atelier Zafindraony',ville:'Antananarivo',note:4.7,nb:4},{icon:'droplet',nom:'Ravinala Cosmetics',ville:'Toamasina',note:4.8,nb:3}];
 // Bandeau de valeurs (cf. planche de marque "Glass Malagasy")
 const VALEURS=[
-  {icon:'🛡️',t:'Confiance',s:'Sûr & fiable'},
-  {icon:'🛍️',t:'Commerce Digital',s:'Moderne & accessible'},
-  {icon:'🪡',t:'Artisanat Local',s:'Authentique & unique'},
-  {icon:'🌿',t:'Durable',s:'Responsable'},
-  {icon:'🇲🇬',t:'Fièrement Malagasy',s:'Lokaly, anisy antoky'},
+  {icon:'shield-check',t:'Confiance',s:'Sûr & fiable'},
+  {icon:'shopping-bag',t:'Commerce Digital',s:'Moderne & accessible'},
+  {icon:'needle',t:'Artisanat Local',s:'Authentique & unique'},
+  {icon:'leaf',t:'Durable',s:'Responsable'},
+  {icon:'flag',t:'Fièrement Malagasy',s:'Lokaly, anisy antoky'},
 ];
 // Technologie intégrée (5 piliers)
 const TECHS=[
-  {icon:'🔒',t:'Plateforme sécurisée',b:['Technologie moderne pour','des transactions fiables']},
-  {icon:'📱',t:'Commerce mobile',b:['Expérience fluide','sur tous les appareils']},
-  {icon:'📦',t:'Traçabilité locale',b:['Suivi des produits','et soutien aux artisans']},
-  {icon:'💳',t:'Paiement sécurisé',b:['Multiples moyens de','paiement Mobile Money']},
-  {icon:'☁️',t:'Technologie cloud',b:['Plateforme rapide,','stable et évolutive']},
+  {icon:'lock',t:'Plateforme sécurisée',b:['Technologie moderne pour','des transactions fiables']},
+  {icon:'smartphone',t:'Commerce mobile',b:['Expérience fluide','sur tous les appareils']},
+  {icon:'package',t:'Traçabilité locale',b:['Suivi des produits','et soutien aux artisans']},
+  {icon:'credit-card',t:'Paiement sécurisé',b:['Multiples moyens de','paiement Mobile Money']},
+  {icon:'cloud',t:'Technologie cloud',b:['Plateforme rapide,','stable et évolutive']},
 ];
 
 /* ─ COMPONENTS ─ */
@@ -82,7 +82,7 @@ function ProdCard({p,onBuy}){
           <span className="pcard-price">{fmt(p.prix)}</span>
           <button className="pcard-buy" onClick={e=>{e.stopPropagation();onBuy(p);}}>+</button>
         </div>
-        <div className="pcard-deliv" style={{fontSize:'13px',color:'var(--muted)',marginTop:'6px'}}>🚚 {p.deliv}</div>
+        <div className="pcard-deliv" style={{fontSize:'13px',color:'var(--muted)',marginTop:'6px',display:'flex',alignItems:'center',gap:'5px'}}><Icon name="truck" size={14}/>{p.deliv}</div>
       </div>
       <div className="pcard-glow"/>
     </article>
@@ -125,9 +125,12 @@ function P2PPaymentPanel({orderId,product,method,user,showToast,onClose}){
     }catch(ex){showToast(ex.message,'err');setProofStatus('idle');}
   };
 
+  // La table `reviews` n'existe pas : on note le VENDEUR via le RPC officiel,
+  // ce qui alimente rating_avg / rating_count sur son profil.
   const rate=async(n)=>{
     setRated(n);
-    try{await supabase.from('reviews').upsert({product_id:product?.id,auteur_id:user?.id,note:n},{onConflict:'product_id,auteur_id'});}catch{}
+    if(!product?.vendeur_id)return;
+    try{await supabase.rpc('submit_user_rating',{p_evalue_id:product.vendeur_id,p_note:n,p_commentaire:null,p_order_id:orderId?String(orderId):null,p_context:'achat'});}catch{}
   };
 
   const vendPhone=getVendorPhone();
@@ -135,7 +138,7 @@ function P2PPaymentPanel({orderId,product,method,user,showToast,onClose}){
 
   return(
     <div className="pay-success">
-      <div style={{fontSize:'32px',marginBottom:'8px'}}>📋</div>
+      <div style={{marginBottom:'8px',color:'var(--emerald-glow)'}}><Icon name="clipboard" size={32}/></div>
       <div style={{fontFamily:'var(--font-display)',fontSize:'20px',fontWeight:800,color:'var(--emerald-glow)',marginBottom:'4px'}}>Commande confirmée !</div>
       <div style={{color:'var(--muted)',fontSize:'14px',marginBottom:'20px'}}>Effectuez votre virement {methodName} au vendeur</div>
 
@@ -166,7 +169,7 @@ function P2PPaymentPanel({orderId,product,method,user,showToast,onClose}){
         <div style={{marginBottom:'16px'}}>
           <div style={{fontSize:'13px',color:'var(--muted)',marginBottom:'8px'}}>Après avoir payé, uploadez votre capture d'écran :</div>
           <label style={{display:'flex',alignItems:'center',gap:'10px',padding:'12px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',cursor:'pointer',background:'var(--glass-1)'}}>
-            <span style={{fontSize:'24px'}}>📸</span>
+            <Icon name="camera" size={22} style={{color:'var(--muted)'}}/>
             <span style={{fontSize:'13px',color:'var(--muted)'}}>{proofFile?proofFile.name:'Sélectionner la preuve de paiement'}</span>
             <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setProofFile(e.target.files[0]);e.target.value='';}}/>
           </label>
@@ -185,18 +188,16 @@ function P2PPaymentPanel({orderId,product,method,user,showToast,onClose}){
       )}
       {proofStatus==='done'&&(
         <div style={{padding:'14px',background:'rgba(20,123,99,0.15)',border:'1px solid rgba(20,123,99,0.3)',borderRadius:'var(--r-md)',marginBottom:'16px',textAlign:'center'}}>
-          <div style={{fontSize:'24px',marginBottom:'6px'}}>⏳</div>
+          <div style={{marginBottom:'6px',color:'var(--emerald-glow)'}}><Icon name="clock" size={24}/></div>
           <div style={{fontWeight:700,color:'var(--emerald-glow)'}}>Preuve envoyée</div>
           <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'4px'}}>En attente de confirmation du vendeur</div>
         </div>
       )}
 
       <div style={{marginBottom:'16px'}}>
-        <div style={{color:'var(--muted)',fontSize:'13px',marginBottom:'8px'}}>Notez ce produit</div>
-        <div style={{display:'flex',gap:'8px',justifyContent:'center',fontSize:'28px'}}>
-          {[1,2,3,4,5].map(n=>(
-            <span key={n} onClick={()=>rate(n)} style={{cursor:'pointer',filter:n<=rated?'none':'grayscale(1)',opacity:n<=rated?1:0.45}}>⭐</span>
-          ))}
+        <div style={{color:'var(--muted)',fontSize:'13px',marginBottom:'8px'}}>Notez ce vendeur</div>
+        <div style={{display:'flex',justifyContent:'center'}}>
+          <StarRating value={rated} size={28} onChange={rate}/>
         </div>
       </div>
       <Btn onClick={onClose} style={{width:'100%'}}>Retour au catalogue</Btn>
@@ -210,9 +211,8 @@ function PaymentModal({product, onClose, showToast, user}){
   const[phone,setPhone]=useState('');
   const[status,setStatus]=useState('select'); // select | processing | success
   const[orderId,setOrderId]=useState(null);
-  const[rated,setRated]=useState(0);
   const[geo,setGeo]=useState({lat:null,lng:null,address:'',loading:false,denied:false});
-  const methods=[{id:'mvola',icon:'📱',name:'MVola',color:'#E30913'},{id:'orange',icon:'🟠',name:'Orange Money',color:'#FF6600'},{id:'airtel',icon:'❤️',name:'Airtel Money',color:'#FF0000'}];
+  const methods=[{id:'mvola',name:'MVola',color:'#FFCE00'},{id:'orange',name:'Orange Money',color:'#FF6600'},{id:'airtel',name:'Airtel Money',color:'#E30913'}];
 
   // Request geolocation as soon as the modal opens
   useEffect(()=>{
@@ -248,17 +248,11 @@ function PaymentModal({product, onClose, showToast, user}){
       }catch(ex){console.warn(ex);showToast('Erreur réseau, réessaie','err');setStatus('select');}
     },2200);
   };
-  // Quick post-purchase rating — feeds the real products.note average (cf. reviews table).
-  const rate=async(n)=>{
-    setRated(n);
-    try{await supabase.from('reviews').upsert({product_id:product?.id,auteur_id:user?.id,note:n},{onConflict:'product_id,auteur_id'});}
-    catch(ex){console.warn('review failed',ex);}
-  };
   return(
     <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
       <div className="modal">
         {status==='select'&&<>
-          <div className="modal-title">💳 Paiement Mobile Money</div>
+          <div className="modal-title" style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="credit-card" size={20}/>Paiement Mobile Money</div>
           <div className="pay-amount-display">
             <div className="pay-amount-val">{fmt(product?.prix||0)}</div>
             <div className="pay-amount-cur">Montant à payer · {product?.nom}</div>
@@ -268,7 +262,7 @@ function PaymentModal({product, onClose, showToast, user}){
             <div className="pay-methods">
               {methods.map(m=>(
                 <div key={m.id} className={'pay-method'+(method===m.id?' on':'')} onClick={()=>setMethod(m.id)}>
-                  <div className="pay-method-icon">{m.icon}</div>
+                  <div className="pay-method-icon" style={{color:m.color}}><Icon name="smartphone" size={24}/></div>
                   <div className="pay-method-name">{m.name}</div>
                   <div className="pay-method-color" style={{color:m.color,fontWeight:700,fontSize:'12px'}}>●</div>
                 </div>
@@ -276,13 +270,13 @@ function PaymentModal({product, onClose, showToast, user}){
             </div>
           </div>
           <div className="fg"><label className="fl">Numéro Mobile Money</label><input className="fi" placeholder="+261 34 00 000 00" value={phone} onChange={e=>setPhone(e.target.value)}/></div>
-          <div style={{padding:'14px',background:'rgba(20,123,99,0.1)',border:'1px solid rgba(20,123,99,0.2)',borderRadius:'var(--r-md)',marginBottom:'12px',fontSize:'13px',color:'var(--muted)'}}>
-            📲 Vous recevrez une demande de confirmation sur votre téléphone. Commission SERAO : 3%.
+          <div style={{padding:'14px',background:'rgba(20,123,99,0.1)',border:'1px solid rgba(20,123,99,0.2)',borderRadius:'var(--r-md)',marginBottom:'12px',fontSize:'13px',color:'var(--muted)',display:'flex',gap:'8px',alignItems:'flex-start'}}>
+            <Icon name="smartphone" size={16} style={{marginTop:'1px'}}/><span>Vous recevrez une demande de confirmation sur votre téléphone. Commission SERAO : 3%.</span>
           </div>
           <div style={{padding:'12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)',marginBottom:'20px',fontSize:'13px'}}>
-            {geo.loading&&<span style={{color:'var(--muted)'}}>📍 Localisation en cours...</span>}
-            {!geo.loading&&geo.lat&&<div><div style={{color:'var(--emerald-glow)',fontWeight:600,marginBottom:'4px'}}>📍 Adresse de livraison détectée</div><div style={{color:'var(--muted)',fontSize:'12px',lineHeight:1.4}}>{geo.address||`${geo.lat.toFixed(4)}, ${geo.lng.toFixed(4)}`}</div></div>}
-            {!geo.loading&&geo.denied&&<span style={{color:'var(--muted)'}}>📍 Localisation non disponible — le vendeur vous contactera pour l'adresse.</span>}
+            {geo.loading&&<span style={{color:'var(--muted)',display:'flex',alignItems:'center',gap:'6px'}}><Icon name="map-pin" size={15}/>Localisation en cours...</span>}
+            {!geo.loading&&geo.lat&&<div><div style={{color:'var(--emerald-glow)',fontWeight:600,marginBottom:'4px',display:'flex',alignItems:'center',gap:'6px'}}><Icon name="map-pin" size={15}/>Adresse de livraison détectée</div><div style={{color:'var(--muted)',fontSize:'12px',lineHeight:1.4}}>{geo.address||`${geo.lat.toFixed(4)}, ${geo.lng.toFixed(4)}`}</div></div>}
+            {!geo.loading&&geo.denied&&<span style={{color:'var(--muted)',display:'flex',alignItems:'center',gap:'6px'}}><Icon name="map-pin" size={15}/>Localisation non disponible — le vendeur vous contactera pour l'adresse.</span>}
           </div>
           <div className="modal-foot">
             <Btn v="glass" onClick={onClose}>Annuler</Btn>
@@ -317,30 +311,41 @@ function TrackingMap(){
   const mapRef=useRef(null);
   const mapInstance=useRef(null);
   const[step,setStep]=useState(3);
-  const steps=[{l:'Commande confirmée',t:'08:00',icon:'📋'},{l:'Préparation',t:'09:30',icon:'📦'},{l:'Expédié',t:'11:00',icon:'🏭'},{l:'En route',t:'14:00',icon:'🚚'},{l:'Livré',t:'16:30',icon:'✅'}];
+  const steps=[{l:'Commande confirmée',t:'08:00',icon:'clipboard'},{l:'Préparation',t:'09:30',icon:'package'},{l:'Expédié',t:'11:00',icon:'factory'},{l:'En route',t:'14:00',icon:'truck'},{l:'Livré',t:'16:30',icon:'check-circle'}];
+
+  // Marqueurs SVG (remplace les emojis pour un rendu net sur toutes plateformes)
+  const svg=(paths)=>`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  const SVG_STORE=svg('<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>');
+  const SVG_TRUCK=svg('<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35a1 1 0 0 0-.78-.38H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>');
+  const SVG_PIN=svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>');
 
   useEffect(()=>{
-    if(mapInstance.current) return;
-    const map=L.map(mapRef.current,{zoomControl:false,attributionControl:false}).setView([-18.9137,47.5361],13);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
-    L.control.zoom({position:'bottomright'}).addTo(map);
-    const sellerIcon=L.divIcon({html:'<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#147B63,#06D6B0);display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid rgba(255,255,255,0.3)">🏪</div>',iconSize:[36,36],className:''});
-    const delivIcon=L.divIcon({html:'<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#F59F0A,#FBBF24);display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid rgba(255,255,255,0.3);animation:pulse 2s infinite;box-shadow:0 0 20px rgba(245,159,10,0.5)">🚚</div>',iconSize:[40,40],className:''});
-    const destIcon=L.divIcon({html:'<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#fca5a5);display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid rgba(255,255,255,0.3)">📍</div>',iconSize:[36,36],className:''});
-    L.marker([-18.910,47.530],{icon:sellerIcon}).addTo(map).bindPopup('<b>Vanille de Sava</b><br>Vendeur SERAO');
-    L.marker([-18.905,47.533],{icon:delivIcon}).addTo(map).bindPopup('<b>Livreur SERAO</b><br>En route vers vous');
-    L.marker([-18.900,47.538],{icon:destIcon}).addTo(map).bindPopup('<b>Destination</b><br>Antananarivo Centre');
-    L.polyline([[-18.910,47.530],[-18.905,47.533],[-18.900,47.538]],{color:'#1aff9c',weight:3,dashArray:'8,6',opacity:0.7}).addTo(map);
-    mapInstance.current=map;
-    return()=>{map.remove();mapInstance.current=null;};
+    let cancelled=false;
+    (async()=>{
+      // Leaflet est chargé à la demande : il ne pèse plus dans le bundle initial.
+      const[{default:L}]=await Promise.all([import('leaflet'),import('leaflet/dist/leaflet.css')]);
+      if(cancelled||mapInstance.current||!mapRef.current)return;
+      const map=L.map(mapRef.current,{zoomControl:false,attributionControl:false}).setView([-18.9137,47.5361],13);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+      L.control.zoom({position:'bottomright'}).addTo(map);
+      const sellerIcon=L.divIcon({html:`<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#147B63,#06D6B0);display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,0.3)">${SVG_STORE}</div>`,iconSize:[36,36],className:''});
+      const delivIcon=L.divIcon({html:`<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#F59F0A,#FBBF24);display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,0.3);animation:pulse 2s infinite;box-shadow:0 0 20px rgba(245,159,10,0.5)">${SVG_TRUCK}</div>`,iconSize:[40,40],className:''});
+      const destIcon=L.divIcon({html:`<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#fca5a5);display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,0.3)">${SVG_PIN}</div>`,iconSize:[36,36],className:''});
+      L.marker([-18.910,47.530],{icon:sellerIcon}).addTo(map).bindPopup('<b>Vanille de Sava</b><br>Vendeur SERAO');
+      L.marker([-18.905,47.533],{icon:delivIcon}).addTo(map).bindPopup('<b>Livreur SERAO</b><br>En route vers vous');
+      L.marker([-18.900,47.538],{icon:destIcon}).addTo(map).bindPopup('<b>Destination</b><br>Antananarivo Centre');
+      L.polyline([[-18.910,47.530],[-18.905,47.533],[-18.900,47.538]],{color:'#1aff9c',weight:3,dashArray:'8,6',opacity:0.7}).addTo(map);
+      mapInstance.current=map;
+    })();
+    return()=>{cancelled=true;if(mapInstance.current){mapInstance.current.remove();mapInstance.current=null;}};
   },[]);
 
   return(<div>
     <div className="tracking-wrap"><div ref={mapRef} id="map"/></div>
     <div style={{display:'flex',gap:'12px',margin:'16px 0',flexWrap:'wrap'}}>
-      {[{icon:'📦',l:'Poids',v:'1.2 kg'},{icon:'📏',l:'Distance',v:'3.2 km'},{icon:'⏱️',l:'ETA',v:'~45 min'},{icon:'🌡️',l:'Stockage',v:'Sec & frais'}].map((s,i)=>(
+      {[{icon:'package',l:'Poids',v:'1.2 kg'},{icon:'ruler',l:'Distance',v:'3.2 km'},{icon:'clock',l:'ETA',v:'~45 min'},{icon:'thermometer',l:'Stockage',v:'Sec & frais'}].map((s,i)=>(
         <div key={i} style={{flex:1,minWidth:'100px',padding:'12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-lg)',textAlign:'center'}}>
-          <div style={{fontSize:'20px',marginBottom:'4px'}}>{s.icon}</div>
+          <div style={{marginBottom:'4px',color:'var(--emerald-glow)'}}><Icon name={s.icon} size={20}/></div>
           <div style={{fontSize:'12px',color:'var(--muted)'}}>{s.l}</div>
           <div style={{fontWeight:700,color:'var(--cyan-light)'}}>{s.v}</div>
         </div>
@@ -349,7 +354,7 @@ function TrackingMap(){
     <div className="tracking-timeline">
       {steps.map((s,i)=>(
         <div key={i} className="track-step" onClick={()=>setStep(i+1)} style={{cursor:'pointer'}}>
-          <div className={'track-dot'+(i<step?' done':i===step?' current':' waiting')} style={{fontSize:'16px'}}>{i<step?'✓':s.icon}</div>
+          <div className={'track-dot'+(i<step?' done':i===step?' current':' waiting')} style={{fontSize:'16px'}}>{i<step?'✓':<Icon name={s.icon} size={15}/>}</div>
           <div className="track-info">
             <div className="track-label" style={{color:i<step?'var(--emerald-glow)':i===step?'var(--text)':'var(--muted)'}}>{s.l}</div>
             <div className="track-time">{s.t} — {i===step?'En cours':i<step?'Complété':'En attente'}</div>
@@ -368,7 +373,7 @@ function KycPhotoInput({label,file,preview,id,onChange,hint}){
       {hint&&<div style={{fontSize:'12px',color:'var(--muted)',marginBottom:'8px'}}>{hint}</div>}
       {!preview?(
         <label htmlFor={'kyc-'+id} style={{display:'block',padding:'24px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',textAlign:'center',cursor:'pointer',background:'var(--glass-1)',transition:'all .2s'}}>
-          <div style={{fontSize:'32px',marginBottom:'6px'}}>📷</div>
+          <div style={{marginBottom:'6px',color:'var(--muted)'}}><Icon name="camera" size={30}/></div>
           <div style={{fontSize:'14px',color:'var(--text)',fontWeight:500}}>Appuyer pour choisir / prendre la photo</div>
           <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'4px'}}>JPG, PNG — 10 Mo max</div>
         </label>
@@ -488,8 +493,8 @@ function KYCFlow({user,showToast,onDone}){
       {step===1&&(
         <div>
           <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'8px',background:'var(--heading-grad)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Photos des documents</div>
-          <div style={{padding:'14px',background:'var(--glass-emerald)',border:'1px solid rgba(20,123,99,0.3)',borderRadius:'var(--r-md)',fontSize:'13px',marginBottom:'20px',lineHeight:1.7,color:'var(--muted)'}}>
-            📸 <strong style={{color:'var(--text)'}}>Conseils :</strong> Bonne lumière, document à plat, entier et lisible. Évitez les reflets sur la plastification.
+          <div style={{padding:'14px',background:'var(--glass-emerald)',border:'1px solid rgba(20,123,99,0.3)',borderRadius:'var(--r-md)',fontSize:'13px',marginBottom:'20px',lineHeight:1.7,color:'var(--muted)',display:'flex',gap:'8px',alignItems:'flex-start'}}>
+            <Icon name="camera" size={16} style={{marginTop:'2px'}}/><span><strong style={{color:'var(--text)'}}>Conseils :</strong> Bonne lumière, document à plat, entier et lisible. Évitez les reflets sur la plastification.</span>
           </div>
           <KycPhotoInput label={`${form.doc_type} — Recto *`} file={rectoFile} preview={rectoPreview} id="recto" onChange={setRectoFile} hint="Face avant du document, bien cadrée et lisible"/>
           {needVerso&&<KycPhotoInput label="CIN — Verso *" file={versoFile} preview={versoPreview} id="verso" onChange={setVersoFile} hint="Face arrière de la CIN"/>}
@@ -499,7 +504,7 @@ function KYCFlow({user,showToast,onDone}){
 
       {step===2&&(
         <div style={{textAlign:'center',padding:'20px 0'}}>
-          <div style={{fontSize:'64px',marginBottom:'16px'}}>✅</div>
+          <div style={{marginBottom:'16px',color:'var(--emerald-glow)'}}><Icon name="check-circle" size={56} strokeWidth={1.5}/></div>
           <div style={{fontFamily:'var(--font-display)',fontSize:'24px',fontWeight:700,marginBottom:'12px',background:'var(--heading-grad)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Demande envoyée !</div>
           <div style={{color:'var(--muted)',fontSize:'15px',lineHeight:1.7,marginBottom:'24px'}}>
             Votre dossier est en cours d'examen par notre équipe.<br/>
@@ -507,8 +512,8 @@ function KYCFlow({user,showToast,onDone}){
             Vous pourrez publier des produits dès validation.
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',fontSize:'13px',marginBottom:'24px',textAlign:'left'}}>
-            {['🔒 Documents sécurisés & chiffrés','⏳ Examen en cours par notre équipe','🔔 Notification par email à la décision','✅ Accès complet après validation'].map((s,i)=>(
-              <div key={i} style={{padding:'12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)'}}>{s}</div>
+            {[['lock','Documents sécurisés & chiffrés'],['clock','Examen en cours par notre équipe'],['bell','Notification par email à la décision'],['check-circle','Accès complet après validation']].map(([ic,s],i)=>(
+              <div key={i} style={{padding:'12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-md)',display:'flex',alignItems:'center',gap:'8px'}}><Icon name={ic} size={15} style={{color:'var(--emerald-glow)'}}/>{s}</div>
             ))}
           </div>
           <Btn onClick={()=>onDone?.()}>Retour à mon espace →</Btn>
@@ -663,7 +668,7 @@ function ChatWindow({user,onClose}){
     {confirmAction&&(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setConfirmAction(null);}}>
         <div className="modal" style={{maxWidth:'400px'}}>
-          <div className="modal-title">⚠️ Confirmation</div>
+          <div className="modal-title" style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="alert" size={18}/>Confirmation</div>
           <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'20px'}}>{confirmAction.message}</p>
           <div className="modal-foot">
             <Btn v="glass" onClick={()=>setConfirmAction(null)}>Annuler</Btn>
@@ -674,14 +679,14 @@ function ChatWindow({user,onClose}){
     )}
     <div className="chat-side">
       <div className="chat-side-head">
-        <div className="chat-side-title">💬 Messages</div>
+        <div className="chat-side-title" style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="message" size={17}/>Messages</div>
         <input className="chat-search" placeholder="Rechercher..." value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       <div className="chat-side-body">
         {channels.length>0&&<div className="chat-sec-label">Salons</div>}
         {channels.map(c=>{const u=unread({type:'channel',id:c.id});return(
           <div key={c.id} className={'chat-item'+(active.type==='channel'&&active.id===c.id?' on':'')} onClick={()=>selectConv({type:'channel',id:c.id,name:c.name,sub:c.desc})}>
-            <div className="ci-av" style={{background:'var(--glass-emerald)',fontSize:'18px'}}>{c.icon}</div>
+            <div className="ci-av" style={{background:'var(--glass-emerald)',color:'var(--emerald-glow)'}}><Icon name={c.icon} size={18}/></div>
             <div style={{flex:1,minWidth:0}}><div className="ci-name">{c.name}</div><div className="ci-prev">{lastMsg(c.id,'channel')||c.desc}</div></div>
             {u>0&&<div className="ci-badge">{u}</div>}
           </div>
@@ -701,12 +706,12 @@ function ChatWindow({user,onClose}){
     </div>
     <div className="chat-main">
       <div className="chat-hdr">
-        <div className="ci-av" style={{background:avColor(active.name),fontSize:active.type==='channel'?'18px':'14px'}}>{active.type==='channel'?(PUB_CHANNELS.find(c=>c.id===active.id)?.icon||'#'):initials(active.name)}</div>
+        <div className="ci-av" style={{background:avColor(active.name),fontSize:active.type==='channel'?'18px':'14px'}}>{active.type==='channel'?<Icon name={PUB_CHANNELS.find(c=>c.id===active.id)?.icon||'hash'} size={18}/>:initials(active.name)}</div>
         <div><div className="chat-hdr-name">{active.name}</div><div className="chat-hdr-sub">{active.sub}</div></div>
         <button onClick={onClose} style={{marginLeft:'auto',width:32,height:32,border:'none',background:'var(--glass-1)',borderRadius:'var(--r-sm)',cursor:'pointer',color:'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
       </div>
       <div className="chat-msgs">
-        {grouped.length===0&&<div className="chat-empty"><div style={{fontSize:'48px'}}>💬</div><div style={{fontWeight:600,color:'var(--text)'}}>Démarrez la conversation</div><div style={{fontSize:'14px',color:'var(--muted)'}}>Bienvenue dans {active.name}</div></div>}
+        {grouped.length===0&&<div className="chat-empty"><div style={{color:'var(--muted)'}}><Icon name="message" size={44} strokeWidth={1.4}/></div><div style={{fontWeight:600,color:'var(--text)'}}>Démarrez la conversation</div><div style={{fontSize:'14px',color:'var(--muted)'}}>Bienvenue dans {active.name}</div></div>}
         {grouped.map((item,i)=>{
           if(item.type==='sep')return<div key={i} className="chat-date-sep"><span>{item.day}</span></div>;
           const sender=getUser(item._from);const mine=item._from===user.id;
@@ -729,11 +734,11 @@ function ChatWindow({user,onClose}){
                   onMouseLeave={()=>setMenuFor(null)}
                   style={{position:'absolute',top:'100%',[mine?'right':'left']:0,marginTop:'6px',background:'rgba(10,18,28,0.98)',border:'1px solid var(--glass-border-hi)',borderRadius:'var(--r-md)',minWidth:'150px',zIndex:50,boxShadow:'var(--shadow-float)',overflow:'hidden',backdropFilter:'blur(20px)'}}
                 >
-                  <div onClick={()=>copyMessage(item)} style={{padding:'10px 14px',fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',color:'var(--text)'}}>📋 Copier le texte</div>
+                  <div onClick={()=>copyMessage(item)} style={{padding:'10px 14px',fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',color:'var(--text)'}}><Icon name="copy" size={15}/>Copier le texte</div>
                   {(mine||user?.role==='admin')&&(
                     <>
                       <div style={{height:'1px',background:'var(--glass-border)'}}/>
-                      <div onClick={()=>deleteMessage(item)} style={{padding:'10px 14px',fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',color:'#fca5a5'}}>🗑️ Supprimer</div>
+                      <div onClick={()=>deleteMessage(item)} style={{padding:'10px 14px',fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',color:'#fca5a5'}}><Icon name="trash" size={15}/>Supprimer</div>
                     </>
                   )}
                 </div>
@@ -838,9 +843,9 @@ function AuthModal({onAuth,onClose,user}){
       {tab==='register'&&<div style={{marginBottom:'18px'}}>
         <div className="fl">Je suis...</div>
         <div className="kyc-role-grid">
-          {[{id:'acheteur',icon:'🛍️',name:'Acheteur',desc:'Découvrir & acheter'},{id:'vendeur',icon:'🏪',name:'Vendeur',desc:'Vendre mes produits'}].map(r=>(
+          {[{id:'acheteur',icon:'shopping-bag',name:'Acheteur',desc:'Découvrir & acheter'},{id:'vendeur',icon:'store',name:'Vendeur',desc:'Vendre mes produits'}].map(r=>(
             <div key={r.id} className={'kyc-role'+(role===r.id?' on':'')} onClick={()=>setRole(r.id)}>
-              <div className="kyc-role-icon">{r.icon}</div>
+              <div className="kyc-role-icon" style={{color:'var(--emerald-glow)'}}><Icon name={r.icon} size={26}/></div>
               <div style={{fontWeight:700}}>{r.name}</div>
               <div style={{fontSize:'12px',color:'var(--muted)'}}>{r.desc}</div>
             </div>
@@ -883,7 +888,7 @@ function ResetPasswordModal({onClose, showToast}){
   };
   return(<div className="modal-bg">
     <div className="modal">
-      <div className="modal-title">🔑 Définir un nouveau mot de passe</div>
+      <div className="modal-title" style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="key" size={18}/>Définir un nouveau mot de passe</div>
       <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'18px'}}>
         Tu viens de cliquer sur un lien de réinitialisation. Choisis un nouveau mot de passe.
       </p>
@@ -957,7 +962,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
     });
     setKycBusy(false);
     if(error){showToast?.(error.message,'err');return;}
-    showToast?.(statut==='approuve'?'✅ Dossier approuvé !':'❌ Dossier rejeté');
+    showToast?.(statut==='approuve'?'Dossier approuvé !':'Dossier rejeté','ok');
     setKycSelected(null);
     loadAll();
   };
@@ -966,7 +971,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
 
   const totalCA=orders.reduce((s,o)=>s+Number(o.montant||0),0);
   const kycPending=kycList.filter(k=>k.statut==='en_attente').length;
-  const TABS=[{id:'dash',l:'Dashboard',i:'📊'},{id:'products',l:'Produits',i:'📦'},{id:'orders',l:'Commandes',i:'🚚'},{id:'users',l:'Membres',i:'👥'},{id:'kyc',l:'KYC',i:'🪪',badge:kycPending||null},{id:'messages',l:'Messages',i:'💬'},{id:'articles',l:'Articles',i:'📝'}];
+  const TABS=[{id:'dash',l:'Dashboard',i:'chart'},{id:'products',l:'Produits',i:'package'},{id:'orders',l:'Commandes',i:'truck'},{id:'users',l:'Membres',i:'users'},{id:'kyc',l:'KYC',i:'id-card',badge:kycPending||null},{id:'messages',l:'Messages',i:'message'},{id:'articles',l:'Articles',i:'file-text'}];
 
   const delProduct=async(p)=>{
     setConfirmAction({message:`Supprimer "${p.nom}" ?`,fn:async()=>{
@@ -1021,9 +1026,9 @@ function AdminPanel({onClose, refreshProducts, showToast}){
     <div className="admin-side">
       <div className="admin-logo">SERAO<span className="a-badge">ADMIN</span></div>
       <nav className="admin-nav">
-        {TABS.map(t=><div key={t.id} className={'a-link'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}><span style={{fontSize:'16px'}}>{t.i}</span><span>{t.l}</span>{t.badge?<span style={{marginLeft:'auto',background:'#ef4444',color:'#fff',borderRadius:'99px',fontSize:'11px',fontWeight:700,padding:'1px 7px',minWidth:'18px',textAlign:'center'}}>{t.badge}</span>:null}</div>)}
+        {TABS.map(t=><div key={t.id} className={'a-link'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}><Icon name={t.i} size={16}/><span>{t.l}</span>{t.badge?<span style={{marginLeft:'auto',background:'#ef4444',color:'#fff',borderRadius:'99px',fontSize:'11px',fontWeight:700,padding:'1px 7px',minWidth:'18px',textAlign:'center'}}>{t.badge}</span>:null}</div>)}
       </nav>
-      <div className="admin-foot"><div className="admin-close" onClick={onClose}><span style={{fontSize:'16px'}}>←</span><span>Retour</span></div></div>
+      <div className="admin-foot"><div className="admin-close" onClick={onClose}><Icon name="arrow-left" size={16}/><span>Retour</span></div></div>
     </div>
     <div className="admin-main">
       {loading&&<div style={{color:'var(--muted)',padding:'40px',textAlign:'center'}}>Chargement…</div>}
@@ -1032,8 +1037,8 @@ function AdminPanel({onClose, refreshProducts, showToast}){
         <div className="a-title">Dashboard</div>
         <div className="a-sub">Vue d'ensemble de SERAO</div>
         <div className="stat-grid">
-          {[{i:'💰',v:fmt(totalCA),l:'Chiffre d\'affaires'},{i:'📦',v:orders.length,l:'Commandes'},{i:'🛍️',v:products.filter(p=>p.active).length,l:'Produits actifs'},{i:'👥',v:users.length,l:'Membres'},{i:'💬',v:msgs.length,l:'Messages (récents)'}].map((s,i)=>(
-            <div key={i} className="stat-card"><div className="stat-ico">{s.i}</div><div className="stat-val">{s.v}</div><div className="stat-lbl">{s.l}</div></div>
+          {[{i:'wallet',v:fmt(totalCA),l:'Chiffre d\'affaires'},{i:'package',v:orders.length,l:'Commandes'},{i:'shopping-bag',v:products.filter(p=>p.active).length,l:'Produits actifs'},{i:'users',v:users.length,l:'Membres'},{i:'message',v:msgs.length,l:'Messages (récents)'}].map((s,i)=>(
+            <div key={i} className="stat-card"><div className="stat-ico" style={{color:'var(--emerald-glow)'}}><Icon name={s.i} size={22}/></div><div className="stat-val">{s.v}</div><div className="stat-lbl">{s.l}</div></div>
           ))}
         </div>
         <div className="atable-wrap"><table className="atable"><thead><tr><th>ID</th><th>Produit</th><th>Client</th><th>Montant</th><th>Statut</th><th>Date</th></tr></thead><tbody>{orders.slice(0,10).map(o=>{const buyer=getUser(o.acheteur_id);return(<tr key={o.id}><td><strong>{o.id}</strong></td><td>{o.product_nom}</td><td>{buyer?.nom||buyer?.email||'—'}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(o.montant)}</td><td><span className={'s-pill '+(o.status==='livre'?'s-ok':o.status==='expedie'||o.status==='transit'?'s-warn':o.status==='annule'?'s-err':'s-ok')}>{o.status}</span></td><td style={{color:'var(--muted)'}}>{o.created_at?.slice(0,10)}</td></tr>);})}</tbody></table></div>
@@ -1043,7 +1048,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px'}}>
           <div><div className="a-title">Produits</div><div className="a-sub">{products.length} produits ({products.filter(p=>p.active).length} actifs)</div></div>
         </div>
-        <div className="atable-wrap"><table className="atable"><thead><tr><th></th><th>Nom</th><th>Catégorie</th><th>Vendeur</th><th>Prix</th><th>Actif</th><th>Actions</th></tr></thead><tbody>{products.map(p=>{const v=getUser(p.vendeur_id);return(<tr key={p.id}><td style={{fontSize:'24px'}}>{p.emoji}</td><td style={{fontWeight:600}}>{p.nom}</td><td>{p.category?.nom||'—'}</td><td style={{color:'var(--muted)'}}>{v?.nom||v?.email||'—'}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(p.prix)}</td><td><span className={'s-pill '+(p.active?'s-ok':'s-err')}>{p.active?'oui':'non'}</span></td><td><div style={{display:'flex',gap:'6px'}}><Btn sm v="glass" onClick={()=>toggleActive(p)}>{p.active?'❌':'✅'}</Btn><Btn sm v="danger" onClick={()=>delProduct(p)}>🗑️</Btn></div></td></tr>);})}</tbody></table></div>
+        <div className="atable-wrap"><table className="atable"><thead><tr><th></th><th>Nom</th><th>Catégorie</th><th>Vendeur</th><th>Prix</th><th>Actif</th><th>Actions</th></tr></thead><tbody>{products.map(p=>{const v=getUser(p.vendeur_id);return(<tr key={p.id}><td style={{fontSize:'24px'}}>{p.emoji}</td><td style={{fontWeight:600}}>{p.nom}</td><td>{p.category?.nom||'—'}</td><td style={{color:'var(--muted)'}}>{v?.nom||v?.email||'—'}</td><td style={{fontWeight:700,color:'var(--cyan-light)'}}>{fmt(p.prix)}</td><td><span className={'s-pill '+(p.active?'s-ok':'s-err')}>{p.active?'oui':'non'}</span></td><td><div style={{display:'flex',gap:'6px'}}><Btn sm v="glass" onClick={()=>toggleActive(p)} title={p.active?'Désactiver':'Activer'}>{p.active?<Icon name="x-circle" size={15}/>:<Icon name="check-circle" size={15}/>}</Btn><Btn sm v="danger" onClick={()=>delProduct(p)} title="Supprimer"><Icon name="trash" size={15}/></Btn></div></td></tr>);})}</tbody></table></div>
       </div>}
 
       {!loading&&tab==='orders'&&<div>
@@ -1061,7 +1066,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
       {!loading&&tab==='messages'&&<div>
         <div className="a-title" style={{marginBottom:'4px'}}>Messages</div>
         <div className="a-sub">{msgs.length} messages récents</div>
-        <div className="atable-wrap"><table className="atable"><thead><tr><th>De</th><th>Vers</th><th>Message</th><th>Heure</th><th>Action</th></tr></thead><tbody>{msgs.slice(0,30).map(m=>{const sender=getUser(m.from_user);const target=m.channel?{nom:'# '+m.channel}:getUser(m.to_user);return(<tr key={m.id}><td>{sender?.nom||sender?.email||'?'}</td><td style={{color:'var(--emerald-glow)'}}>{target?.nom||target?.email||'?'}</td><td style={{maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.content}</td><td style={{color:'var(--muted)'}}>{fmtT(m.created_at)}</td><td><Btn sm v="danger" onClick={()=>delMsg(m)}>🗑️</Btn></td></tr>);})}</tbody></table></div>
+        <div className="atable-wrap"><table className="atable"><thead><tr><th>De</th><th>Vers</th><th>Message</th><th>Heure</th><th>Action</th></tr></thead><tbody>{msgs.slice(0,30).map(m=>{const sender=getUser(m.from_user);const target=m.channel?{nom:'# '+m.channel}:getUser(m.to_user);return(<tr key={m.id}><td>{sender?.nom||sender?.email||'?'}</td><td style={{color:'var(--emerald-glow)'}}>{target?.nom||target?.email||'?'}</td><td style={{maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.content}</td><td style={{color:'var(--muted)'}}>{fmtT(m.created_at)}</td><td><Btn sm v="danger" onClick={()=>delMsg(m)} title="Supprimer"><Icon name="trash" size={15}/></Btn></td></tr>);})}</tbody></table></div>
       </div>}
 
       {!loading&&tab==='articles'&&<div>
@@ -1082,7 +1087,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
               <td style={{fontFamily:'monospace',fontSize:'13px'}}>{k.nin||'—'}</td>
               <td style={{color:'var(--muted)'}}>{k.created_at?.slice(0,10)}</td>
               <td><span className={'s-pill '+(k.statut==='approuve'?'s-ok':k.statut==='rejete'?'s-err':'s-warn')}>{k.statut==='approuve'?'Approuvé':k.statut==='rejete'?'Rejeté':'En attente'}</span></td>
-              <td><Btn sm v="glass" onClick={()=>openKycReview(k)}>👁 Examiner</Btn></td>
+              <td><Btn sm v="glass" onClick={()=>openKycReview(k)}><Icon name="eye" size={14} style={{marginRight:'5px'}}/>Examiner</Btn></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -1092,7 +1097,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
       {kycSelected&&(
         <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setKycSelected(null);}}>
           <div className="modal" style={{maxWidth:'780px',width:'95vw'}}>
-            <div className="modal-title">🪪 Examen KYC — {kycSelected.vendeur_nom}</div>
+            <div className="modal-title" style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="id-card" size={19}/>Examen KYC — {kycSelected.vendeur_nom}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'20px',fontSize:'14px'}}>
               <div><span style={{color:'var(--muted)'}}>Email : </span><strong>{kycSelected.vendeur_email}</strong></div>
               <div><span style={{color:'var(--muted)'}}>Document : </span><strong>{kycSelected.doc_type}</strong></div>
@@ -1114,7 +1119,7 @@ function AdminPanel({onClose, refreshProducts, showToast}){
                 ):(
                   kycSelected[key==='recto'?'cin_recto_path':key==='verso'?'cin_verso_path':'selfie_path']?(
                     <div key={key} style={{borderRadius:'var(--r-md)',border:'1px solid var(--glass-border)',padding:'24px',textAlign:'center',color:'var(--muted)',fontSize:'13px'}}>
-                      <div style={{fontSize:'24px',marginBottom:'8px'}}>⏳</div>Chargement…
+                      <div style={{marginBottom:'8px'}}><Icon name="clock" size={22}/></div>Chargement…
                     </div>
                   ):null
                 )
@@ -1129,8 +1134,8 @@ function AdminPanel({onClose, refreshProducts, showToast}){
                 </div>
                 <div className="modal-foot">
                   <Btn v="glass" onClick={()=>setKycSelected(null)}>Fermer</Btn>
-                  <Btn v="danger" onClick={()=>reviewKyc('rejete')} disabled={kycBusy}>❌ Rejeter</Btn>
-                  <Btn onClick={()=>reviewKyc('approuve')} disabled={kycBusy}>✅ Approuver</Btn>
+                  <Btn v="danger" onClick={()=>reviewKyc('rejete')} disabled={kycBusy}><Icon name="x-circle" size={15} style={{marginRight:'5px'}}/>Rejeter</Btn>
+                  <Btn onClick={()=>reviewKyc('approuve')} disabled={kycBusy}><Icon name="check-circle" size={15} style={{marginRight:'5px'}}/>Approuver</Btn>
                 </div>
               </div>
             )}
@@ -1161,9 +1166,6 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
   useEffect(()=>{
     const video=videoRef.current;
     if(!video)return;
-    // Force the browser to download the whole file so scrubbing is frame-accurate.
-    // play() triggers aggressive buffering; we immediately pause to keep it silent.
-    video.play().then(()=>video.pause()).catch(()=>{});
     let raf;
     const tick=()=>{
       if(!video.duration)return;
@@ -1189,7 +1191,7 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
     {/* Scroll-driven video background — scrubs frame-by-frame as user scrolls */}
     <video ref={videoRef} className="accueil-video-bg" aria-hidden="true"
       src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/hero-bg.mp4.mp4"
-      muted playsInline preload="auto"/>
+      muted playsInline preload="metadata"/>
     <div className="accueil-video-overlay" aria-hidden="true"/>
 
     <section className="hero">
@@ -1204,8 +1206,8 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
           />
           <p className="hero-sub">La plus premium des marketplaces malagasy. Produits authentiques, livrés avec soin.</p>
           <div className="hero-ctas">
-            <Btn onClick={()=>nav('catalogue')}>🛍️ Explorer le catalogue</Btn>
-            <Btn v="glass" onClick={()=>nav('vendeur')}>🏪 Devenir vendeur</Btn>
+            <Btn onClick={()=>nav('catalogue')}><Icon name="shopping-bag" size={16} style={{marginRight:'7px'}}/>Explorer le catalogue</Btn>
+            <Btn v="glass" onClick={()=>nav('vendeur')}><Icon name="store" size={16} style={{marginRight:'7px'}}/>Devenir vendeur</Btn>
           </div>
           <div className="hero-stats">
             {heroStats.map((s,i)=>(
@@ -1222,7 +1224,7 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
         <div className="glass values-band">
           {VALEURS.map((v,i)=>(
             <div key={i} className="value-item">
-              <div className="value-ic">{v.icon}</div>
+              <div className="value-ic" style={{color:'var(--emerald-glow)'}}><Icon name={v.icon} size={24}/></div>
               <div className="value-tx"><div className="value-t">{v.t}</div><div className="value-s">{v.s}</div></div>
             </div>
           ))}
@@ -1243,7 +1245,7 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
     <section className="section" style={{paddingTop:0}}>
       <div className="wrap">
         <div className="sec-top"><div><span className="sec-eye">Explorer</span><h2 className="sec-h">Par catégorie</h2></div></div>
-        <div className="catgrid">{CATS.map((c,i)=><div key={i} className="cattile" onClick={()=>nav('catalogue')}><div className="cat-emo">{c.emoji}</div><div className="cat-name">{c.nom}</div><div className="cat-count">{c.count} produits</div></div>)}</div>
+        <div className="catgrid">{CATS.map((c,i)=><div key={i} className="cattile" onClick={()=>nav('catalogue')}><div className="cat-emo" style={{color:'var(--emerald-glow)'}}><Icon name={c.icon} size={32} strokeWidth={1.5}/></div><div className="cat-name">{c.nom}</div><div className="cat-count">{c.count} produits</div></div>)}</div>
       </div>
     </section>
 
@@ -1252,7 +1254,7 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
         <div className="sec-top"><div><span className="sec-eye">Technologie intégrée</span><h2 className="sec-h">Une base solide & moderne</h2></div></div>
         <div className="tech-grid">{TECHS.map((t,i)=>(
           <div key={i} className="glass tech-card">
-            <div className="tech-ic">{t.icon}</div>
+            <div className="tech-ic" style={{color:'var(--emerald-glow)'}}><Icon name={t.icon} size={26} strokeWidth={1.6}/></div>
             <div className="tech-t">{t.t}</div>
             <div className="tech-b">{t.b.map((line,j)=><span key={j}>{line}</span>)}</div>
           </div>
@@ -1263,14 +1265,14 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
     <section className="section" style={{paddingTop:0}}>
       <div className="wrap">
         <div className="sec-top"><div><span className="sec-eye">Pourquoi SERAO ?</span><h2 className="sec-h">Une plateforme de confiance</h2></div></div>
-        <div className="why-grid">{WHY.map((w,i)=><div key={i} className="why-card"><div className="why-num">0{i+1}</div><div className="why-icon">{w.icon}</div><div className="why-title">{w.t}</div><div className="why-body">{w.b}</div></div>)}</div>
+        <div className="why-grid">{WHY.map((w,i)=><div key={i} className="why-card"><div className="why-num">0{i+1}</div><div className="why-icon" style={{color:'#fff'}}><Icon name={w.icon} size={30} strokeWidth={1.5}/></div><div className="why-title">{w.t}</div><div className="why-body">{w.b}</div></div>)}</div>
       </div>
     </section>
 
     <section className="section" style={{paddingTop:0}}>
       <div className="wrap">
         <div className="sec-top"><div><span className="sec-eye">Confiance</span><h2 className="sec-h">Vendeurs à la une</h2></div></div>
-        <div className="vgrid">{VENDORS_D.map((v,i)=><div key={i} className="vcard"><div className="vcard-av">{v.emoji}</div><div><div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px'}}><span className="vcard-name">{v.nom}</span><Badge kind="verif"/></div><div className="vcard-city">{v.ville}</div><div className="vcard-stats"><span style={{color:'var(--emerald-glow)'}}>★ {v.note}</span><span style={{color:'var(--subtle)'}}>·</span><span>{v.nb} produits</span></div></div></div>)}</div>
+        <div className="vgrid">{VENDORS_D.map((v,i)=><div key={i} className="vcard"><div className="vcard-av" style={{color:'var(--emerald-glow)'}}><Icon name={v.icon} size={24}/></div><div><div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px'}}><span className="vcard-name">{v.nom}</span><Badge kind="verif"/></div><div className="vcard-city">{v.ville}</div><div className="vcard-stats"><span style={{color:'var(--emerald-glow)'}}>★ {v.note}</span><span style={{color:'var(--subtle)'}}>·</span><span>{v.nb} produits</span></div></div></div>)}</div>
       </div>
     </section>
 
@@ -1280,7 +1282,7 @@ function PageAccueil({nav,onBuy,products,articles,stats}){
         <div className="agrid">{articles.filter(a=>a.publie).map((a,i)=>(
           <article key={i} className="acard" onClick={()=>nav('blog')}>
             <div style={{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}}>
-              <span className="acard-tag">📰 {a.min} min</span>
+              <span className="acard-tag">{a.min} min de lecture</span>
               <span className="acard-tag">{a.date}</span>
             </div>
             <h3 style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'10px',lineHeight:1.3,color:'var(--text)'}}>{a.titre}</h3>
@@ -1348,12 +1350,12 @@ function PageLivraison(){
     <div className="page-hero"><div className="wrap"><h1>SERAO Delivery</h1><p>Suivi en temps réel · Livraison fiable partout à Madagascar</p></div></div>
     <section className="section"><div className="wrap">
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'16px',marginBottom:'40px'}}>
-        {[{icon:'🏠',nom:'Domicile',prix:'15 000–30 000 Ar',d:'3-7 jours'},{icon:'📦',nom:'Point relais',prix:'8 000–15 000 Ar',d:'2-5 jours'},{icon:'🤝',nom:'Retrait vendeur',prix:'Gratuit',d:'Sur RDV'}].map((l,i)=>(
+        {[{icon:'home',nom:'Domicile',prix:'15 000–30 000 Ar',d:'3-7 jours'},{icon:'package',nom:'Point relais',prix:'8 000–15 000 Ar',d:'2-5 jours'},{icon:'handshake',nom:'Retrait vendeur',prix:'Gratuit',d:'Sur RDV'}].map((l,i)=>(
           <div key={i} className="glass" style={{padding:'28px',textAlign:'center',borderRadius:'var(--r-xl)'}}>
-            <div style={{fontSize:'36px',marginBottom:'12px'}}>{l.icon}</div>
+            <div style={{marginBottom:'12px',color:'var(--emerald-glow)'}}><Icon name={l.icon} size={34} strokeWidth={1.5}/></div>
             <div style={{fontFamily:'var(--font-display)',fontSize:'17px',fontWeight:700,marginBottom:'6px'}}>{l.nom}</div>
             <div style={{color:'var(--emerald-glow)',fontWeight:600,marginBottom:'4px'}}>{l.prix}</div>
-            <div style={{fontSize:'13px',color:'var(--muted)'}}>⏱ {l.d}</div>
+            <div style={{fontSize:'13px',color:'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',gap:'5px'}}><Icon name="clock" size={13}/>{l.d}</div>
           </div>
         ))}
       </div>
@@ -1368,18 +1370,18 @@ function PageLivraison(){
 
 function PageLive(){
   const[url,setUrl]=useState('');const[key,setKey]=useState('');const[plats,setPlats]=useState([]);const[sent,setSent]=useState(false);
-  const plist=[{id:'facebook',icon:'📘',nom:'Facebook Live'},{id:'youtube',icon:'▶️',nom:'YouTube Live'},{id:'twitch',icon:'💜',nom:'Twitch'},{id:'tiktok',icon:'🎵',nom:'TikTok'}];
+  const plist=[{id:'facebook',icon:'facebook',nom:'Facebook Live'},{id:'youtube',icon:'youtube',nom:'YouTube Live'},{id:'twitch',icon:'twitch',nom:'Twitch'},{id:'tiktok',icon:'music',nom:'TikTok'}];
   return(<div>
     <div className="page-hero"><div className="wrap"><h1>Diffusion Live</h1><p>Diffusez simultanément sur toutes les plateformes</p></div></div>
     <section className="section"><div className="wrap" style={{maxWidth:'600px'}}>
       <div className="fg"><label className="fl">URL du serveur RTMP</label><input className="fi" placeholder="rtmp://..." value={url} onChange={e=>setUrl(e.target.value)}/></div>
       <div className="fg"><label className="fl">Clé de stream</label><input className="fi" type="password" placeholder="••••••••" value={key} onChange={e=>setKey(e.target.value)}/></div>
       <div className="fg"><label className="fl">Plateformes</label>
-        <div className="platform-grid">{plist.map(p=><div key={p.id} className={'ptile'+(plats.includes(p.id)?' on':'')} onClick={()=>setPlats(pp=>pp.includes(p.id)?pp.filter(x=>x!==p.id):[...pp,p.id])}><span style={{fontSize:'24px'}}>{p.icon}</span><span style={{fontWeight:600}}>{p.nom}</span>{plats.includes(p.id)&&<span style={{marginLeft:'auto',color:'var(--emerald-glow)'}}>✓</span>}</div>)}</div>
+        <div className="platform-grid">{plist.map(p=><div key={p.id} className={'ptile'+(plats.includes(p.id)?' on':'')} onClick={()=>setPlats(pp=>pp.includes(p.id)?pp.filter(x=>x!==p.id):[...pp,p.id])}><Icon name={p.icon} size={22}/><span style={{fontWeight:600}}>{p.nom}</span>{plats.includes(p.id)&&<span style={{marginLeft:'auto',color:'var(--emerald-glow)'}}>✓</span>}</div>)}</div>
       </div>
-      <Btn onClick={()=>{if(!url||!plats.length){alert('Remplissez l\'URL et sélectionnez une plateforme.');return;}setSent(true);setTimeout(()=>setSent(false),3000);}}>▶ Démarrer la diffusion</Btn>
+      <Btn onClick={()=>{if(!url||!plats.length){alert('Remplissez l\'URL et sélectionnez une plateforme.');return;}setSent(true);setTimeout(()=>setSent(false),3000);}}><Icon name="play" size={15} style={{marginRight:'6px'}}/>Démarrer la diffusion</Btn>
       {sent&&<div style={{marginTop:'16px',padding:'16px',background:'var(--glass-emerald)',border:'1px solid rgba(20,123,99,0.3)',borderRadius:'var(--r-lg)',color:'var(--emerald-glow)',fontWeight:600}}>✓ Diffusion démarrée avec succès !</div>}
-      <div style={{marginTop:'24px',padding:'16px',background:'rgba(245,159,10,0.08)',borderLeft:'3px solid var(--amber,#F59F0A)',borderRadius:'0 var(--r-md) var(--r-md) 0',fontSize:'13px',color:'var(--muted)'}}>⚠️ Vous êtes responsable du contenu diffusé. Respectez les CGU de chaque plateforme.</div>
+      <div style={{marginTop:'24px',padding:'16px',background:'rgba(245,159,10,0.08)',borderLeft:'3px solid var(--amber,#F59F0A)',borderRadius:'0 var(--r-md) var(--r-md) 0',fontSize:'13px',color:'var(--muted)',display:'flex',gap:'8px',alignItems:'flex-start'}}><Icon name="alert" size={15} style={{marginTop:'2px',color:'#F59F0A'}}/><span>Vous êtes responsable du contenu diffusé. Respectez les CGU de chaque plateforme.</span></div>
     </div></section>
   </div>);
 }
@@ -1388,7 +1390,7 @@ function PageAPropos({nav}){
   return(<div>
     <div className="page-hero"><div className="wrap"><h1>À propos de SERAO</h1><p>SERAO est née d'une vision : rendre les produits authentiques de Madagascar accessibles à tous.</p></div></div>
     <section className="section"><div className="wrap">
-      <div className="why-grid">{[{icon:'🎯',t:'Notre mission',b:"Valoriser le savoir-faire malagasy et créer un pont entre producteurs locaux et consommateurs du monde entier."},{icon:'🔭',t:'Notre vision',b:"Devenir la première marketplace de référence pour les produits authentiques de Madagascar."},{icon:'🤝',t:'Notre communauté',b:"Plus de 100 vendeurs vérifiés et des milliers de clients satisfaits nous font confiance."},{icon:'⚡',t:'Innovation',b:"IA, diffusion live, livraison intégrée — la technologie au service de l'artisanat malagasy."}].map((b,i)=><div key={i} className="why-card"><div className="why-icon">{b.icon}</div><div className="why-title">{b.t}</div><div className="why-body">{b.b}</div></div>)}</div>
+      <div className="why-grid">{[{icon:'target',t:'Notre mission',b:"Valoriser le savoir-faire malagasy et créer un pont entre producteurs locaux et consommateurs du monde entier."},{icon:'telescope',t:'Notre vision',b:"Devenir la première marketplace de référence pour les produits authentiques de Madagascar."},{icon:'handshake',t:'Notre communauté',b:"Plus de 100 vendeurs vérifiés et des milliers de clients satisfaits nous font confiance."},{icon:'zap',t:'Innovation',b:"IA, diffusion live, livraison intégrée — la technologie au service de l'artisanat malagasy."}].map((b,i)=><div key={i} className="why-card"><div className="why-icon" style={{color:'#fff'}}><Icon name={b.icon} size={30} strokeWidth={1.5}/></div><div className="why-title">{b.t}</div><div className="why-body">{b.b}</div></div>)}</div>
       <div style={{marginTop:'40px'}}><div className="cta-band"><div><div style={{fontFamily:'var(--font-display)',fontSize:'28px',fontWeight:800,color:'#fff',marginBottom:'8px'}}>Rejoignez l'aventure</div><div style={{color:'rgba(255,255,255,.7)'}}>Que vous soyez vendeur ou acheteur, SERAO est votre plateforme.</div></div><Btn v="glass" onClick={()=>nav('vendeur')} style={{color:'#fff',borderColor:'rgba(255,255,255,0.3)',background:'rgba(255,255,255,0.1)'}}>Commencer →</Btn></div></div>
     </div></section>
   </div>);
@@ -1436,9 +1438,9 @@ function PageContact({showToast,user}){
     <div className="page-hero"><div className="wrap"><h1>Contact</h1><p>Une question, un partenariat, un souci ? Écris-nous.</p></div></div>
     <section className="section"><div className="wrap" style={{maxWidth:'600px'}}>
       <div className="glass" style={{padding:'28px',borderRadius:'var(--r-xl)',marginBottom:'20px',display:'grid',gap:'10px',fontSize:'14px',color:'var(--muted)'}}>
-        <div>📧 <a href="mailto:nohannsamby@gmail.com" style={{color:'var(--text)',textDecoration:'none'}}><strong>nohannsamby@gmail.com</strong></a></div>
-        <div>💬 <a href="https://wa.me/261381714548" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)',textDecoration:'none'}}><strong>WhatsApp : +261 38 171 45 48</strong></a></div>
-        <div>📍 Antananarivo, Madagascar · Lun–Sam 8h–18h</div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="mail" size={16} style={{color:'var(--emerald-glow)'}}/><a href="mailto:nohannsamby@gmail.com" style={{color:'var(--text)',textDecoration:'none'}}><strong>nohannsamby@gmail.com</strong></a></div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="message" size={16} style={{color:'var(--emerald-glow)'}}/><a href="https://wa.me/261381714548" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)',textDecoration:'none'}}><strong>WhatsApp : +261 38 171 45 48</strong></a></div>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="map-pin" size={16} style={{color:'var(--emerald-glow)'}}/>Antananarivo, Madagascar · Lun–Sam 8h–18h</div>
       </div>
       <form onSubmit={submit}>
         <div className="fg"><label className="fl">Nom</label><input className="fi" value={f.nom} onChange={e=>set('nom',e.target.value)} placeholder="Votre nom"/></div>
@@ -1571,19 +1573,25 @@ function PageProfil({user,showToast,refreshUser,nav}){
     await load();
   };
 
+  // Previews gérés par effet : évite de recréer un blob URL à chaque rendu (fuite mémoire)
+  const[avatarBlobUrl,setAvatarBlobUrl]=useState(null);
+  const[bannerBlobUrl,setBannerBlobUrl]=useState(null);
+  useEffect(()=>{if(!avatarFile){setAvatarBlobUrl(null);return;}const u=URL.createObjectURL(avatarFile);setAvatarBlobUrl(u);return()=>URL.revokeObjectURL(u);},[avatarFile]);
+  useEffect(()=>{if(!bannerFile){setBannerBlobUrl(null);return;}const u=URL.createObjectURL(bannerFile);setBannerBlobUrl(u);return()=>URL.revokeObjectURL(u);},[bannerFile]);
+
   if(!user)return(<div className="page-hero"><div className="wrap"><h1>Profil</h1><p>Connectez-vous pour accéder à votre profil.</p></div></div>);
   if(!profile)return(<div style={{textAlign:'center',padding:'60px',color:'var(--muted)'}}>Chargement...</div>);
 
   const isVendeur=profile.role==='vendeur';
-  const avatarPreview=avatarFile?URL.createObjectURL(avatarFile):profile.avatar_url;
-  const bannerPreview=bannerFile?URL.createObjectURL(bannerFile):profile.shop_banner_url;
+  const avatarPreview=avatarBlobUrl||profile.avatar_url;
+  const bannerPreview=bannerBlobUrl||profile.shop_banner_url;
 
   return(
     <div>
       {/* Banner */}
       <div style={{height:'180px',background:bannerPreview?`url(${bannerPreview}) center/cover`:'linear-gradient(135deg,rgba(20,123,99,0.4),rgba(6,214,176,0.1))',position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,transparent 60%,rgba(6,10,16,0.9))'}}/>
-        {editing&&isVendeur&&<label style={{position:'absolute',bottom:12,right:16,background:'rgba(0,0,0,0.6)',color:'#fff',padding:'6px 14px',borderRadius:'var(--r-pill)',fontSize:'13px',cursor:'pointer',backdropFilter:'blur(8px)'}}>📷 Bannière<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setBannerFile(e.target.files[0]);e.target.value='';}}/></label>}
+        {editing&&isVendeur&&<label style={{position:'absolute',bottom:12,right:16,background:'rgba(0,0,0,0.6)',color:'#fff',padding:'6px 14px',borderRadius:'var(--r-pill)',fontSize:'13px',cursor:'pointer',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',gap:'6px'}}><Icon name="camera" size={14}/>Bannière<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setBannerFile(e.target.files[0]);e.target.value='';}}/></label>}
       </div>
 
       <section className="section" style={{paddingTop:0}}>
@@ -1594,7 +1602,7 @@ function PageProfil({user,showToast,refreshUser,nav}){
               <div style={{width:100,height:100,borderRadius:'50%',background:avColor(profile.nom||'?'),border:'4px solid rgba(6,10,16,1)',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'36px',fontWeight:700}}>
                 {avatarPreview?<img src={avatarPreview} alt={profile.nom} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:initials(profile.nom||'?')}
               </div>
-              {editing&&<label style={{position:'absolute',bottom:0,right:0,width:28,height:28,background:'var(--emerald)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',border:'2px solid rgba(6,10,16,1)',fontSize:'14px'}}>📷<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setAvatarFile(e.target.files[0]);e.target.value='';}}/></label>}
+              {editing&&<label style={{position:'absolute',bottom:0,right:0,width:28,height:28,background:'var(--emerald)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',border:'2px solid rgba(6,10,16,1)',color:'#fff'}}><Icon name="camera" size={14}/><input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setAvatarFile(e.target.files[0]);e.target.value='';}}/></label>}
             </div>
             <div style={{flex:1,minWidth:'200px',paddingBottom:'8px'}}>
               {editing?(
@@ -1604,12 +1612,12 @@ function PageProfil({user,showToast,refreshUser,nav}){
               )}
               <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
                 <span style={{padding:'3px 10px',borderRadius:'999px',fontSize:'12px',fontWeight:700,background:'var(--glass-emerald)',color:'var(--emerald-glow)',border:'1px solid rgba(20,123,99,0.3)'}}>{profile.role}</span>
-                {profile.region&&<span style={{fontSize:'13px',color:'var(--muted)'}}>📍 {profile.region}</span>}
-                {profile.verified&&<span style={{fontSize:'12px',color:'var(--emerald-glow)'}}>✅ Vérifié</span>}
+                {profile.region&&<span style={{fontSize:'13px',color:'var(--muted)',display:'inline-flex',alignItems:'center',gap:'4px'}}><Icon name="map-pin" size={13}/>{profile.region}</span>}
+                {profile.verified&&<span style={{fontSize:'12px',color:'var(--emerald-glow)',display:'inline-flex',alignItems:'center',gap:'4px'}}><Icon name="check-circle" size={13}/>Vérifié</span>}
               </div>
               {profile.rating_count>0&&<div style={{marginTop:'6px'}}><StarRating value={profile.rating_avg} count={profile.rating_count} size={16}/></div>}
             </div>
-            {!editing&&<Btn sm v="glass" onClick={startEdit}>✏️ Modifier</Btn>}
+            {!editing&&<Btn sm v="glass" onClick={startEdit}><Icon name="edit" size={14} style={{marginRight:'5px'}}/>Modifier</Btn>}
           </div>
 
           {editing?(
@@ -1620,12 +1628,12 @@ function PageProfil({user,showToast,refreshUser,nav}){
                   <div className="fg"><label className="fl">Région</label><input className="fi" value={form.region} onChange={e=>setF('region',e.target.value)} placeholder="ex: Antananarivo"/></div>
                   <div className="fg"><label className="fl">Téléphone</label><input className="fi" value={form.tel} onChange={e=>setF('tel',e.target.value)} placeholder="+261 34..."/></div>
                 </div>
-                <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'16px',fontWeight:700,color:'var(--text)',fontSize:'15px'}}>💳 Numéros de paiement Mobile Money</div>
+                <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'16px',fontWeight:700,color:'var(--text)',fontSize:'15px',display:'flex',alignItems:'center',gap:'8px'}}><Icon name="credit-card" size={16}/>Numéros de paiement Mobile Money</div>
                 <div className="fg"><label className="fl">Numéro MVola</label><input className="fi" placeholder="034 XX XXX XX" value={form.mvola_number||''} onChange={e=>setF('mvola_number',e.target.value)}/></div>
                 <div className="fg"><label className="fl">Numéro Orange Money</label><input className="fi" placeholder="032 XX XXX XX" value={form.orange_number||''} onChange={e=>setF('orange_number',e.target.value)}/></div>
                 <div className="fg"><label className="fl">Numéro Airtel Money</label><input className="fi" placeholder="033 XX XXX XX" value={form.airtel_number||''} onChange={e=>setF('airtel_number',e.target.value)}/></div>
                 {isVendeur&&<>
-                  <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'16px',fontWeight:700,color:'var(--text)',fontSize:'15px'}}>🏪 Ma boutique</div>
+                  <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'16px',fontWeight:700,color:'var(--text)',fontSize:'15px',display:'flex',alignItems:'center',gap:'8px'}}><Icon name="store" size={16}/>Ma boutique</div>
                   <div className="fg"><label className="fl">Nom de la boutique</label><input className="fi" value={form.shop_name} onChange={e=>setF('shop_name',e.target.value)} placeholder="ex: Vanille de Sava"/></div>
                   <div className="fg"><label className="fl">Description</label><textarea className="fi" rows="3" value={form.shop_description} onChange={e=>setF('shop_description',e.target.value)} placeholder="Décrivez votre boutique..."/></div>
                 </>}
@@ -1640,7 +1648,7 @@ function PageProfil({user,showToast,refreshUser,nav}){
               {profile.bio&&<div className="glass" style={{padding:'16px',borderRadius:'var(--r-lg)',marginBottom:'20px',fontSize:'14px',color:'var(--muted)',lineHeight:1.6}}>{profile.bio}</div>}
               {isVendeur&&profile.shop_name&&(
                 <div className="glass" style={{padding:'20px',borderRadius:'var(--r-xl)',marginBottom:'20px'}}>
-                  <div style={{fontWeight:700,fontSize:'16px',marginBottom:'6px'}}>🏪 {profile.shop_name}</div>
+                  <div style={{fontWeight:700,fontSize:'16px',marginBottom:'6px',display:'flex',alignItems:'center',gap:'8px'}}><Icon name="store" size={16} style={{color:'var(--emerald-glow)'}}/>{profile.shop_name}</div>
                   {profile.shop_description&&<div style={{fontSize:'14px',color:'var(--muted)',lineHeight:1.6}}>{profile.shop_description}</div>}
                 </div>
               )}
@@ -1689,7 +1697,7 @@ function PageProfil({user,showToast,refreshUser,nav}){
       {ratingForm.show&&(
         <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setRatingForm(f=>({...f,show:false}));}}>
           <div className="modal" style={{maxWidth:'400px'}}>
-            <div className="modal-title">⭐ Noter {ratingForm.targetNom}</div>
+            <div className="modal-title" style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="star" size={18}/>Noter {ratingForm.targetNom}</div>
             <div style={{marginBottom:'20px',textAlign:'center'}}><StarRating value={ratingForm.note} size={36} onChange={n=>setRatingForm(f=>({...f,note:n}))}/></div>
             <div className="fg"><label className="fl">Commentaire (optionnel)</label><textarea className="fi" rows="3" value={ratingForm.commentaire} onChange={e=>setRatingForm(f=>({...f,commentaire:e.target.value}))} placeholder="Votre avis..."/></div>
             <div className="modal-foot">
@@ -1766,31 +1774,39 @@ function PageMessages({user,showToast}){
     const inT=target.type==='channel'?m.channel===target.id:(m.from_user===target.id&&m.to_user===user?.id);
     return inT&&m.created_at>since;
   }).length;
+  // Aperçu de conversation : les messages média (JSON) s'affichent "Photo"/"Vidéo"
+  const previewText=(c)=>{
+    try{const p=JSON.parse(c);if(p._t==='media')return p.mime?.startsWith('video/')?'Vidéo':'Photo';}catch{}
+    return c;
+  };
   const lastMsg=(id,type)=>{
     const ms=msgs.filter(m=>type==='channel'?m.channel===id:(m.from_user===id&&m.to_user===user?.id)||(m.from_user===user?.id&&m.to_user===id));
-    const l=ms[ms.length-1];return l?l.content.slice(0,32)+(l.content.length>32?'…':''):'';
+    const l=ms[ms.length-1];if(!l)return'';
+    const t=previewText(l.content);return t.slice(0,32)+(t.length>32?'…':'');
   };
 
   const send=async()=>{
     if((!input.trim()&&!mediaFile)||sending||!user)return;
     setSending(true);
     let content=input.trim();
-    if(mediaFile){
-      const ext=mediaFile.name.split('.').pop();
-      const path=`chat/${user.id}/${Date.now()}.${ext}`;
-      const{error:upErr}=await supabase.storage.from('product-photos').upload(path,mediaFile,{contentType:mediaFile.type});
-      if(!upErr){
+    try{
+      if(mediaFile){
+        const ext=mediaFile.name.split('.').pop();
+        const path=`chat/${user.id}/${Date.now()}.${ext}`;
+        const{error:upErr}=await supabase.storage.from('product-photos').upload(path,mediaFile,{contentType:mediaFile.type});
+        if(upErr){showToast('Envoi du média échoué : '+upErr.message,'err');setSending(false);return;}
         const{data}=supabase.storage.from('product-photos').getPublicUrl(path);
         content=JSON.stringify({_t:'media',url:data.publicUrl,mime:mediaFile.type,text:content||undefined});
+        setMediaFile(null);setMediaPreview(null);
       }
-      setMediaFile(null);setMediaPreview(null);
+      setInput('');
+      const payload={from_user:user.id,content,...(active.type==='channel'?{channel:active.id,to_user:null}:{to_user:active.id,channel:null})};
+      const{error}=await supabase.from('messages').insert(payload);
+      if(error){showToast('Message non envoyé : '+error.message,'err');if(!mediaFile)setInput(input);}
+    }finally{
+      setSending(false);
+      inputRef.current?.focus();
     }
-    setInput('');
-    const payload={from_user:user.id,content,...(active.type==='channel'?{channel:active.id,to_user:null}:{to_user:active.id,channel:null})};
-    const{error}=await supabase.from('messages').insert(payload);
-    if(error&&!mediaFile){setInput(content);}
-    setSending(false);
-    inputRef.current?.focus();
   };
 
   const selectConv=t=>{
@@ -1831,7 +1847,7 @@ function PageMessages({user,showToast}){
               const u=unread(t);
               return(
                 <div key={c.id} className={`msg-conv-item${active.id===c.id&&active.type==='channel'?' on':''}`} onClick={()=>selectConv(t)}>
-                  <div className="msg-conv-av" style={{background:'var(--glass-emerald)',fontSize:'18px'}}>{c.icon}</div>
+                  <div className="msg-conv-av" style={{background:'var(--glass-emerald)',color:'var(--emerald-glow)'}}><Icon name={c.icon} size={18}/></div>
                   <div className="msg-conv-info">
                     <div className="msg-conv-name">{c.name}</div>
                     <div className="msg-conv-prev">{lastMsg(c.id,'channel')||c.desc}</div>
@@ -1866,8 +1882,8 @@ function PageMessages({user,showToast}){
         {/* Header */}
         <div className="msg-conv-hdr">
           <button className="msg-back-btn" onClick={()=>setMobileView('list')}>←</button>
-          <div className="msg-conv-av-sm" style={{background:active.type==='channel'?'var(--glass-emerald)':avColor(active.name||'?'),fontSize:active.type==='channel'?'16px':'12px',fontWeight:700}}>
-            {active.type==='channel'?PUB_CHANNELS.find(c=>c.id===active.id)?.icon||'💬':initials(active.name||'?')}
+          <div className="msg-conv-av-sm" style={{background:active.type==='channel'?'var(--glass-emerald)':avColor(active.name||'?'),fontSize:active.type==='channel'?'16px':'12px',fontWeight:700,color:active.type==='channel'?'var(--emerald-glow)':undefined}}>
+            {active.type==='channel'?<Icon name={PUB_CHANNELS.find(c=>c.id===active.id)?.icon||'message'} size={16}/>:initials(active.name||'?')}
           </div>
           <div>
             <div style={{fontWeight:700,fontSize:'15px'}}>{active.name}</div>
@@ -1963,7 +1979,7 @@ function PageCommandes({orders,user,showToast,refresh}){
     <div className="page-hero"><div className="wrap"><h1>Mes commandes</h1><p>{orders.length} commande{orders.length!==1?'s':''}</p></div></div>
     <section className="section"><div className="wrap">
       {orders.length===0&&<div className="glass" style={{padding:'48px',textAlign:'center'}}>
-        <div style={{fontSize:'48px',marginBottom:'12px'}}>📦</div>
+        <div style={{marginBottom:'12px',color:'var(--muted)'}}><Icon name="package" size={44} strokeWidth={1.4}/></div>
         <div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucune commande</div>
         <div style={{color:'var(--muted)'}}>Vos achats apparaîtront ici.</div>
       </div>}
@@ -1985,17 +2001,17 @@ function PageCommandes({orders,user,showToast,refresh}){
               </div>
             </div>
             <div style={{display:'flex',gap:'16px',fontSize:'13px',color:'var(--muted)',marginBottom:'12px',flexWrap:'wrap'}}>
-              <span>💳 {o.pay_method||'—'}</span>
-              <span>📅 {o.date||(o.created_at?new Date(o.created_at).toLocaleDateString('fr-FR'):'')}</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:'5px'}}><Icon name="credit-card" size={13}/>{o.pay_method||'—'}</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:'5px'}}><Icon name="calendar" size={13}/>{o.date||(o.created_at?new Date(o.created_at).toLocaleDateString('fr-FR'):'')}</span>
             </div>
             {p2pLabel&&(
-              <div style={{padding:'10px 14px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'13px',color:'var(--emerald-glow)',fontWeight:600,marginBottom:'12px'}}>
-                🔄 {p2pLabel}
+              <div style={{padding:'10px 14px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'13px',color:'var(--emerald-glow)',fontWeight:600,marginBottom:'12px',display:'flex',alignItems:'center',gap:'7px'}}>
+                <Icon name="refresh" size={14}/>{p2pLabel}
               </div>
             )}
             {o.p2p_status==='disputed'&&o.dispute_reason&&(
-              <div style={{padding:'10px 14px',background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--r-md)',fontSize:'13px',color:'#fca5a5',marginBottom:'12px'}}>
-                ⚠️ Litige : {o.dispute_reason}
+              <div style={{padding:'10px 14px',background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--r-md)',fontSize:'13px',color:'#fca5a5',marginBottom:'12px',display:'flex',alignItems:'flex-start',gap:'7px'}}>
+                <Icon name="alert" size={14} style={{marginTop:'2px'}}/><span>Litige : {o.dispute_reason}</span>
               </div>
             )}
             {o.payment_proof_url&&(
@@ -2008,7 +2024,7 @@ function PageCommandes({orders,user,showToast,refresh}){
               <div style={{borderTop:'1px solid var(--glass-border)',paddingTop:'12px'}}>
                 <div style={{fontSize:'13px',color:'var(--muted)',marginBottom:'8px'}}>Uploadez votre preuve de paiement :</div>
                 <label style={{display:'flex',alignItems:'center',gap:'8px',padding:'10px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',cursor:'pointer',background:'var(--glass-1)',fontSize:'13px'}}>
-                  <span>📸</span>
+                  <Icon name="camera" size={17} style={{color:'var(--muted)'}}/>
                   <span style={{color:'var(--muted)'}}>{proofFiles[o.id]?proofFiles[o.id].name:'Capture d\'écran du virement'}</span>
                   <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f)setProofFiles(pf=>({...pf,[o.id]:f}));e.target.value='';}}/>
                 </label>
@@ -2141,13 +2157,13 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
   const KYCBanner=()=>{
     if(kycStatut==='approuve') return(
       <div className="kyc-banner kyc-ok">
-        <span>✅</span>
+        <Icon name="check-circle" size={20}/>
         <div><strong>Identité vérifiée</strong><span> — Vous pouvez publier des produits</span></div>
       </div>
     );
     if(kycStatut==='en_attente') return(
       <div className="kyc-banner kyc-wait">
-        <span>⏳</span>
+        <Icon name="clock" size={20}/>
         <div><strong>Vérification en cours</strong><span> — Délai 24-48h. Vous pourrez publier dès validation.</span></div>
       </div>
     );
@@ -2162,7 +2178,7 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
     );
     return(
       <div className="kyc-banner kyc-warn">
-        <span>🪪</span>
+        <Icon name="id-card" size={20}/>
         <div style={{flex:1}}><strong>Vérification d'identité requise</strong><span style={{display:'block',fontSize:'13px',marginTop:'2px',opacity:.8}}>Soumettez votre CIN pour pouvoir publier des produits.</span></div>
         <Btn sm onClick={()=>setShowKYC(true)}>Vérifier mon identité →</Btn>
       </div>
@@ -2185,9 +2201,9 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
     )}
     {/* Onglets dashboard vendeur */}
     <div style={{display:'flex',gap:'8px',marginBottom:'28px',borderBottom:'1px solid var(--glass-border)',paddingBottom:'0'}}>
-      {[{id:'products',l:'📦 Mes produits'},{id:'orders',l:'🚚 Commandes reçues',badge:vendOrders.filter(o=>o.status==='confirme').length||null}].map(t=>(
+      {[{id:'products',i:'package',l:'Mes produits'},{id:'orders',i:'truck',l:'Commandes reçues',badge:vendOrders.filter(o=>o.status==='confirme').length||null}].map(t=>(
         <button key={t.id} onClick={()=>setVendTab(t.id)} style={{padding:'10px 18px',background:'none',border:'none',borderBottom:`2px solid ${vendTab===t.id?'var(--emerald)':'transparent'}`,color:vendTab===t.id?'var(--emerald-glow)':'var(--muted)',fontWeight:600,fontSize:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'6px',transition:'all .2s'}}>
-          {t.l}{t.badge?<span style={{background:'#ef4444',color:'#fff',borderRadius:'99px',fontSize:'11px',fontWeight:700,padding:'1px 6px'}}>{t.badge}</span>:null}
+          <Icon name={t.i} size={15}/>{t.l}{t.badge?<span style={{background:'#ef4444',color:'#fff',borderRadius:'99px',fontSize:'11px',fontWeight:700,padding:'1px 6px'}}>{t.badge}</span>:null}
         </button>
       ))}
     </div>
@@ -2199,16 +2215,16 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
       </div>
       {kycApproved
         ?<Btn onClick={openNew}>+ Nouveau produit</Btn>
-        :<Btn v="glass" style={{opacity:.5,cursor:'not-allowed'}} title="Vérification d'identité requise">🔒 Nouveau produit</Btn>
+        :<Btn v="glass" style={{opacity:.5,cursor:'not-allowed'}} title="Vérification d'identité requise"><Icon name="lock" size={14} style={{marginRight:'6px'}}/>Nouveau produit</Btn>
       }
     </div>}
 
     {vendTab==='products'&&products.length===0&&!editing&&(
       <div className="glass" style={{padding:'48px',textAlign:'center'}}>
-        <div style={{fontSize:'48px',marginBottom:'12px'}}>📦</div>
+        <div style={{marginBottom:'12px',color:'var(--muted)'}}><Icon name="package" size={44} strokeWidth={1.4}/></div>
         <div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucun produit pour l'instant</div>
-        <div style={{color:'var(--muted)',marginBottom:'20px'}}>Ajoute ton premier produit pour qu'il apparaisse dans le catalogue.</div>
-        <Btn onClick={openNew}>+ Ajouter mon premier produit</Btn>
+        <div style={{color:'var(--muted)',marginBottom:'20px'}}>{kycApproved?'Ajoute ton premier produit pour qu\'il apparaisse dans le catalogue.':'Vérifie ton identité (ci-dessus) pour pouvoir publier ton premier produit.'}</div>
+        {kycApproved&&<Btn onClick={openNew}>+ Ajouter mon premier produit</Btn>}
       </div>
     )}
 
@@ -2226,8 +2242,8 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
               <div className="pcard-foot">
                 <span className="pcard-price">{fmt(p.prix)}</span>
                 <div style={{display:'flex',gap:'6px'}}>
-                  <Btn sm v="glass" onClick={()=>openEdit(p)}>✏️</Btn>
-                  <Btn sm v="danger" onClick={()=>del(p)}>🗑️</Btn>
+                  <Btn sm v="glass" onClick={()=>openEdit(p)} title="Modifier"><Icon name="edit" size={14}/></Btn>
+                  <Btn sm v="danger" onClick={()=>del(p)} title="Supprimer"><Icon name="trash" size={14}/></Btn>
                 </div>
               </div>
             </div>
@@ -2239,7 +2255,7 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
     {vendTab==='orders'&&(
       <div>
         <h2 className="sec-h" style={{marginBottom:'16px'}}>Commandes reçues</h2>
-        {vendOrders.length===0&&<div className="glass" style={{padding:'48px',textAlign:'center'}}><div style={{fontSize:'48px',marginBottom:'12px'}}>🚚</div><div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucune commande</div><div style={{color:'var(--muted)'}}>Les commandes de vos produits apparaîtront ici.</div></div>}
+        {vendOrders.length===0&&<div className="glass" style={{padding:'48px',textAlign:'center'}}><div style={{marginBottom:'12px',color:'var(--muted)'}}><Icon name="truck" size={44} strokeWidth={1.4}/></div><div style={{fontFamily:'var(--font-display)',fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>Aucune commande</div><div style={{color:'var(--muted)'}}>Les commandes de vos produits apparaîtront ici.</div></div>}
         {vendOrders.map(o=>(
           <div key={o.id} className="glass" style={{padding:'16px',borderRadius:'var(--r-lg)',marginBottom:'12px'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:'8px',marginBottom:'8px'}}>
@@ -2254,18 +2270,18 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
             </div>
             {o.delivery_lat?(
               <div style={{marginTop:'8px'}}>
-                <div style={{fontSize:'13px',color:'var(--muted)',marginBottom:'6px'}}>📍 <strong style={{color:'var(--emerald-glow)'}}>Adresse de livraison :</strong> {o.delivery_address||`${Number(o.delivery_lat).toFixed(5)}, ${Number(o.delivery_lng).toFixed(5)}`}</div>
+                <div style={{fontSize:'13px',color:'var(--muted)',marginBottom:'6px',display:'flex',alignItems:'flex-start',gap:'5px'}}><Icon name="map-pin" size={14} style={{marginTop:'2px',color:'var(--emerald-glow)'}}/><span><strong style={{color:'var(--emerald-glow)'}}>Adresse de livraison :</strong> {o.delivery_address||`${Number(o.delivery_lat).toFixed(5)}, ${Number(o.delivery_lng).toFixed(5)}`}</span></div>
                 <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-                  <a href={`https://www.google.com/maps?q=${o.delivery_lat},${o.delivery_lng}`} target="_blank" rel="noopener noreferrer" style={{padding:'5px 12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-pill)',fontSize:'12px',color:'var(--text)',textDecoration:'none'}}>🗺️ Voir sur Google Maps</a>
-                  <a href={`https://waze.com/ul?ll=${o.delivery_lat},${o.delivery_lng}&navigate=yes`} target="_blank" rel="noopener noreferrer" style={{padding:'5px 12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-pill)',fontSize:'12px',color:'var(--text)',textDecoration:'none'}}>🧭 Waze</a>
+                  <a href={`https://www.google.com/maps?q=${o.delivery_lat},${o.delivery_lng}`} target="_blank" rel="noopener noreferrer" style={{padding:'5px 12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-pill)',fontSize:'12px',color:'var(--text)',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:'5px'}}><Icon name="map" size={13}/>Voir sur Google Maps</a>
+                  <a href={`https://waze.com/ul?ll=${o.delivery_lat},${o.delivery_lng}&navigate=yes`} target="_blank" rel="noopener noreferrer" style={{padding:'5px 12px',background:'var(--glass-1)',border:'1px solid var(--glass-border)',borderRadius:'var(--r-pill)',fontSize:'12px',color:'var(--text)',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:'5px'}}><Icon name="compass" size={13}/>Waze</a>
                 </div>
               </div>
             ):(
-              <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'6px'}}>📍 Localisation non disponible — contactez l'acheteur pour l'adresse.</div>
+              <div style={{fontSize:'13px',color:'var(--muted)',marginTop:'6px',display:'flex',alignItems:'center',gap:'5px'}}><Icon name="map-pin" size={14}/>Localisation non disponible — contactez l'acheteur pour l'adresse.</div>
             )}
             {o.p2p_status==='proof_uploaded'&&(
               <div style={{borderTop:'1px solid var(--glass-border)',marginTop:'12px',paddingTop:'12px'}}>
-                <div style={{fontWeight:600,fontSize:'13px',color:'var(--emerald-glow)',marginBottom:'10px'}}>📋 Preuve de paiement reçue</div>
+                <div style={{fontWeight:600,fontSize:'13px',color:'var(--emerald-glow)',marginBottom:'10px',display:'flex',alignItems:'center',gap:'6px'}}><Icon name="clipboard" size={14}/>Preuve de paiement reçue</div>
                 {o.payment_proof_url&&(
                   <div style={{marginBottom:'10px'}}>
                     <img src={o.payment_proof_url} alt="Preuve" style={{maxWidth:'100%',maxHeight:160,borderRadius:'var(--r-md)',objectFit:'cover',cursor:'pointer',display:'block'}} onClick={()=>window.open(o.payment_proof_url,'_blank')}/>
@@ -2276,14 +2292,14 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
                     ✓ Confirmer paiement reçu
                   </button>
                   <button onClick={()=>{const r=window.prompt('Motif du litige :');if(r)supabase.rpc('open_order_dispute',{p_order_id:String(o.id),p_reason:r}).then(()=>{showToast('Litige ouvert');load();});}} style={{flex:1,padding:'9px 14px',background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'var(--r-pill)',fontWeight:700,fontSize:'13px',cursor:'pointer'}}>
-                    ⚠️ Ouvrir un litige
+                    Ouvrir un litige
                   </button>
                 </div>
               </div>
             )}
             {o.p2p_status&&o.p2p_status!=='proof_uploaded'&&(
-              <div style={{marginTop:'10px',padding:'8px 12px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'13px',color:'var(--emerald-glow)',fontWeight:600}}>
-                🔄 {{waiting_payment:'En attente de paiement acheteur',confirmed:'Paiement confirmé',disputed:'Litige ouvert',resolved:'Litige résolu'}[o.p2p_status]||o.p2p_status}
+              <div style={{marginTop:'10px',padding:'8px 12px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'13px',color:'var(--emerald-glow)',fontWeight:600,display:'flex',alignItems:'center',gap:'7px'}}>
+                <Icon name="refresh" size={14}/>{{waiting_payment:'En attente de paiement acheteur',confirmed:'Paiement confirmé',disputed:'Litige ouvert',resolved:'Litige résolu'}[o.p2p_status]||o.p2p_status}
               </div>
             )}
           </div>
@@ -2299,7 +2315,7 @@ function VendeurDashboard({user, showToast, refreshAll, refreshUser}){
           <div className="fg"><label className="fl">Photo du produit <span style={{color:'var(--muted)',fontWeight:400}}>(facultatif, max 5 Mo)</span></label>
             {!photoFile&&!form.image_url&&(
               <label htmlFor="prod-photo" style={{display:'block',padding:'24px',border:'2px dashed var(--glass-border-hi)',borderRadius:'var(--r-md)',textAlign:'center',cursor:'pointer',background:'var(--glass-1)',transition:'all .2s'}}>
-                <div style={{fontSize:'32px',marginBottom:'6px'}}>📷</div>
+                <div style={{marginBottom:'6px',color:'var(--muted)'}}><Icon name="camera" size={30}/></div>
                 <div style={{fontSize:'14px',color:'var(--text)',fontWeight:500}}>Cliquer pour ajouter une photo</div>
                 <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'4px'}}>JPG, PNG, WEBP — 5 Mo max</div>
               </label>
@@ -2368,7 +2384,7 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
     if(!user){setShowAuth(true);return;}
     const{error}=await supabase.rpc('request_vendor');
     if(error){showToast(error.message,'err');return;}
-    showToast('Tu es maintenant vendeur 🎉');
+    showToast('Tu es maintenant vendeur !');
     refreshUser?.();
   };
 
@@ -2393,7 +2409,7 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
             </ul>
           </div>
           <div className="glass" style={{padding:'32px',textAlign:'center'}}>
-            <div style={{fontSize:'56px',marginBottom:'16px'}}>🏪</div>
+            <div style={{marginBottom:'16px',color:'var(--emerald-glow)'}}><Icon name="store" size={48} strokeWidth={1.4}/></div>
             <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,marginBottom:'8px'}}>Prêt à vendre sur SERAO ?</div>
             <div style={{color:'var(--muted)',fontSize:'15px',marginBottom:'24px',lineHeight:1.6}}>
               {user?'Active ton statut vendeur en un clic et commence à publier tes produits.':'Crée un compte (ou connecte-toi) puis active ton statut vendeur.'}
@@ -2401,8 +2417,8 @@ function PageVendeur({user,showToast,setShowAuth,refreshUser,refreshProducts}){
             <Btn onClick={becomeVendor} style={{width:'100%'}}>
               {user?'Activer mon statut vendeur →':'Se connecter pour commencer →'}
             </Btn>
-            <div style={{marginTop:'20px',padding:'12px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'12px',color:'var(--muted)'}}>
-              💰 Inscription gratuite · 3% de commission sur les ventes réalisées
+            <div style={{marginTop:'20px',padding:'12px',background:'var(--glass-emerald)',borderRadius:'var(--r-md)',fontSize:'12px',color:'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}>
+              <Icon name="wallet" size={13}/>Inscription gratuite · 3% de commission sur les ventes réalisées
             </div>
           </div>
         </div>
@@ -2446,7 +2462,7 @@ Si tu ne connais pas la réponse, dis honnêtement que tu vas transmettre la que
 
 function SupportBot({onClose, user}){
   const[msgs,setMsgs]=useState([
-    {role:'model',text:'Bonjour ! 👋 Je suis l\'assistant SERAO. Comment puis-je vous aider aujourd\'hui ?'}
+    {role:'model',text:'Bonjour ! Je suis l\'assistant SERAO. Comment puis-je vous aider aujourd\'hui ?'}
   ]);
   const[input,setInput]=useState('');
   const[loading,setLoading]=useState(false);
@@ -2504,7 +2520,7 @@ function SupportBot({onClose, user}){
       const reply=data?.choices?.[0]?.message?.content||'Désolé, je n\'ai pas pu répondre.';
       setMsgs(m=>[...m,{role:'model',text:reply}]);
     }catch(ex){
-      setMsgs(m=>[...m,{role:'model',text:'❌ '+ex.message+'\nVeuillez réessayer ou contacter le support.'}]);
+      setMsgs(m=>[...m,{role:'model',text:'Une erreur est survenue ('+ex.message+'). Veuillez réessayer ou contacter le support.'}]);
     }finally{setLoading(false);inputRef.current?.focus();}
   };
 
@@ -2517,7 +2533,7 @@ function SupportBot({onClose, user}){
             <div style={{fontWeight:700,fontSize:'14px'}}>Assistant SERAO</div>
             <div style={{fontSize:'11px',color:'var(--emerald-glow)',display:'flex',alignItems:'center',gap:'4px'}}>
               <span style={{width:6,height:6,borderRadius:'50%',background:'var(--emerald-glow)',display:'inline-block'}}/>
-              En ligne · IA Gemini
+              En ligne · Assistant IA
             </div>
           </div>
         </div>
@@ -2565,7 +2581,7 @@ function Footer({nav}){
         <div className="footer-logo"><img src="https://ieydodwzccskavzgyrnz.supabase.co/storage/v1/object/public/product-photos/Videos/Font%20SERAO.png" alt="SERAO" className="brand-logo-img footer-logo-img" /></div>
         <p style={{color:'var(--muted)',fontSize:'14px',lineHeight:1.6,maxWidth:'260px'}}>La marketplace premium des produits authentiques de Madagascar.</p>
         <div style={{display:'flex',gap:'10px',marginTop:'16px'}}>
-          {['📘','📸','🐦','▶️'].map((icon,i)=><div key={i} style={{width:36,height:36,borderRadius:'var(--r-md)',background:'var(--glass-2)',border:'1px solid var(--glass-border)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:'16px'}}>{icon}</div>)}
+          {[['facebook','Facebook'],['instagram','Instagram'],['twitter','Twitter / X'],['youtube','YouTube']].map(([icon,label])=><div key={icon} title={label} style={{width:36,height:36,borderRadius:'var(--r-md)',background:'var(--glass-2)',border:'1px solid var(--glass-border)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'var(--muted)'}}><Icon name={icon} size={16}/></div>)}
         </div>
       </div>
       <div className="footer-cols">
@@ -2574,7 +2590,7 @@ function Footer({nav}){
         ))}
       </div>
     </div>
-    <div className="footer-copy"><div className="wrap" style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'8px'}}><span>© 2026 SERAO. Tous droits réservés.</span><span>Fabriqué avec <span style={{color:'var(--emerald-glow)'}}>❤</span> à Madagascar</span></div></div>
+    <div className="footer-copy"><div className="wrap" style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'8px'}}><span>© 2026 SERAO. Tous droits réservés.</span><span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}>Fabriqué avec <Icon name="heart" size={12} style={{color:'var(--emerald-glow)'}}/> à Madagascar</span></div></div>
   </footer>);
 }
 
@@ -2624,8 +2640,10 @@ function App(){
       // Only the columns `authenticated` is allowed to read (cf. S3). The
       // email comes from the auth session (authUser.email), so we never need
       // to expose it through the profiles table.
+      // kyc_statut est indispensable au dashboard vendeur (sans lui, un vendeur
+      // approuvé ne pouvait jamais publier de produit).
       const{data,error}=await withTimeout(
-        supabase.from('profiles').select('id,nom,role,region,avatar_url,verified,created_at').eq('id',authUser.id).maybeSingle(),
+        supabase.from('profiles').select('id,nom,role,region,avatar_url,verified,kyc_statut,created_at').eq('id',authUser.id).maybeSingle(),
         10000,
         'Chargement du profil'
       );
@@ -2783,7 +2801,7 @@ function App(){
     const u=await fetchProfile(authUser);
     setUser(u);
     setShowAuth(false);
-    showToast(`Bienvenue, ${u?.nom||u?.email||''} ! 👋`);
+    showToast(`Bienvenue, ${u?.nom||u?.email||''} !`);
   };
   const logout=async()=>{
     try{await supabase.auth.signOut();}
@@ -2806,7 +2824,7 @@ function App(){
 
   const isAdmin=user?.role==='admin';
 
-  if(authLoading)return<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',fontSize:'24px',color:'var(--emerald-glow)'}}>⏳ Chargement…</div>;
+  if(authLoading)return<div style={{display:'flex',flexDirection:'column',gap:'14px',alignItems:'center',justifyContent:'center',height:'100vh',fontSize:'15px',color:'var(--muted)'}}><div className="pay-spinner" style={{margin:0}}/>Chargement…</div>;
   if(adminOpen&&isAdmin){
     return(<>
       <AdminPanel onClose={()=>setAdminOpen(false)} refreshProducts={refreshProducts} showToast={showToast}/>
@@ -2817,11 +2835,13 @@ function App(){
   return(<div className="app-root">
     {showAuth&&<AuthModal user={user} onAuth={login} onClose={()=>setShowAuth(false)}/>}
     {resetMode&&<ResetPasswordModal onClose={()=>{setResetMode(false);window.history.replaceState({},'',SITE_URL);}} showToast={showToast}/>}
-    {payProduct&&<PaymentModal product={payProduct} user={user} onClose={()=>{setPayProduct(null);setCart(c=>c+1);}} showToast={showToast}/>}
+    {/* À la fermeture on re-synchronise les commandes : le badge panier est
+        recalculé depuis les vraies commandes (plus d'incrément même si annulé) */}
+    {payProduct&&<PaymentModal product={payProduct} user={user} onClose={()=>{setPayProduct(null);refreshOrders();}} showToast={showToast}/>}
     {adminOpen&&!isAdmin&&(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setAdminOpen(false)}}>
         <div className="modal">
-          <div className="modal-title">🔐 Accès Admin SERAO</div>
+          <div className="modal-title" style={{display:'flex',alignItems:'center',gap:'8px'}}><Icon name="lock" size={18}/>Accès Admin SERAO</div>
           <p style={{color:'var(--muted)',fontSize:'14px',marginBottom:'16px'}}>
             Cette zone est réservée aux comptes avec le rôle <strong style={{color:'var(--text)'}}>admin</strong>.
             {!user&&' Connecte-toi avec un compte admin.'}
@@ -2847,7 +2867,7 @@ function App(){
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               {unread>0&&<span className="notif-dot">{unread>9?'9+':unread}</span>}
             </button>
-            <button className="nav-iconbtn nav-iconbtn-auth" onClick={()=>showToast(`🛒 Panier : ${cart} article(s)`)}>
+            <button className="nav-iconbtn nav-iconbtn-auth" onClick={()=>showToast(`Panier : ${cart} article(s)`)}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
               {cart>0&&<span className="cart-dot">{cart}</span>}
             </button>
@@ -2857,13 +2877,12 @@ function App(){
                 <div><div className="u-name">{(user.nom||user.email||'').split(' ')[0]||'…'}</div><div className="u-role">{user.role||'membre'}</div></div>
               </div>
               {userMenu&&<div className="user-dropdown">
-                <div className="u-drop-item" onClick={()=>{setShowChat(true);setUserMenu(false);}}>💬 Mes messages{unread>0&&` (${unread})`}</div>
-                <div className="u-drop-item" onClick={()=>{nav('profil');setUserMenu(false);}}>👤 Mon profil</div>
-                <div className="u-drop-item" onClick={()=>{nav('messages');setUserMenu(false);}}>💬 Messages</div>
-                <div className="u-drop-item" onClick={()=>{nav('commandes');setUserMenu(false);}}>📦 Mes commandes</div>
-                {user.role==='vendeur'&&<div className="u-drop-item" onClick={()=>{nav('vendeur');setUserMenu(false);}}>🏪 Ma boutique</div>}
+                <div className="u-drop-item" onClick={()=>{nav('profil');setUserMenu(false);}}><Icon name="user" size={15}/> Mon profil</div>
+                <div className="u-drop-item" onClick={()=>{nav('messages');setUserMenu(false);}}><Icon name="message" size={15}/> Messages{unread>0&&` (${unread})`}</div>
+                <div className="u-drop-item" onClick={()=>{nav('commandes');setUserMenu(false);}}><Icon name="package" size={15}/> Mes commandes</div>
+                {user.role==='vendeur'&&<div className="u-drop-item" onClick={()=>{nav('vendeur');setUserMenu(false);}}><Icon name="store" size={15}/> Ma boutique</div>}
                 <div className="u-drop-sep"/>
-                <div className="u-drop-item danger" onClick={logout}>🚪 Déconnexion</div>
+                <div className="u-drop-item danger" onClick={logout}><Icon name="log-out" size={15}/> Déconnexion</div>
               </div>}
             </div>
           </>):(
@@ -2890,12 +2909,12 @@ function App(){
       )}
       {LINKS.map(l=><div key={l.id} className={'mob-link'+(page===l.id?' on':'')} onClick={()=>nav(l.id)}>{l.l}</div>)}
       {user?(<>
-        <div className="mob-link" onClick={()=>{setShowChat(true);setMenu(false);}}>💬 Messages{unread>0&&` (${unread})`}</div>
-        <div className="mob-link" onClick={()=>{nav('commandes');setMenu(false);}}>📦 Mes commandes</div>
-        {user.role==='vendeur'&&<div className="mob-link" onClick={()=>{nav('vendeur');setMenu(false);}}>🏪 Ma boutique</div>}
-        <div className="mob-link" style={{color:'#fca5a5',borderBottom:'none'}} onClick={()=>{logout();setMenu(false);}}>🚪 Déconnexion</div>
+        <div className="mob-link" style={{display:'flex',alignItems:'center',gap:'8px'}} onClick={()=>{setShowChat(true);setMenu(false);}}><Icon name="message" size={15}/>Messages{unread>0&&` (${unread})`}</div>
+        <div className="mob-link" style={{display:'flex',alignItems:'center',gap:'8px'}} onClick={()=>{nav('commandes');setMenu(false);}}><Icon name="package" size={15}/>Mes commandes</div>
+        {user.role==='vendeur'&&<div className="mob-link" style={{display:'flex',alignItems:'center',gap:'8px'}} onClick={()=>{nav('vendeur');setMenu(false);}}><Icon name="store" size={15}/>Ma boutique</div>}
+        <div className="mob-link" style={{color:'#fca5a5',borderBottom:'none',display:'flex',alignItems:'center',gap:'8px'}} onClick={()=>{logout();setMenu(false);}}><Icon name="log-out" size={15}/>Déconnexion</div>
       </>):(
-        <div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none'}} onClick={()=>{setShowAuth(true);setMenu(false);}}>🔑 Se connecter</div>
+        <div className="mob-link" style={{color:'var(--emerald-glow)',borderBottom:'none',display:'flex',alignItems:'center',gap:'8px'}} onClick={()=>{setShowAuth(true);setMenu(false);}}><Icon name="key" size={15}/>Se connecter</div>
       )}
     </div>
 
@@ -2919,12 +2938,12 @@ function App(){
     {/* BOTTOM NAV MOBILE */}
     <div className="bottom-nav">
       <div className="bnav-items">
-        {[{id:'accueil',icon:'🏠',l:'Accueil'},{id:'catalogue',icon:'🛍️',l:'Catalogue'},{id:'messages',icon:'💬',l:'Messages'},{id:'profil',icon:'👤',l:'Profil'},{id:'commandes',icon:'📦',l:'Commandes'}].map(b=>(
+        {[{id:'accueil',icon:'home',l:'Accueil'},{id:'catalogue',icon:'shopping-bag',l:'Catalogue'},{id:'messages',icon:'message',l:'Messages'},{id:'profil',icon:'user',l:'Profil'},{id:'commandes',icon:'package',l:'Commandes'}].map(b=>(
           <div key={b.id} className={'bnav-item'+(page===b.id?' on':'')} onClick={()=>{
             if((b.id==='messages'||b.id==='profil'||b.id==='commandes')&&!user){setShowAuth(true);return;}
             nav(b.id);
           }}>
-            <div className="bnav-icon">{b.icon}</div>
+            <div className="bnav-icon"><Icon name={b.icon} size={21} strokeWidth={page===b.id?2.2:1.8}/></div>
             <div className="bnav-label">{b.l}</div>
           </div>
         ))}
