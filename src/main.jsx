@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import 'leaflet/dist/leaflet.css';
+// leaflet.css est chargé dynamiquement par TrackingMap (page Livraison uniquement)
 import './styles.css';
 import App from './App.jsx';
 

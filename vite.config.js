@@ -39,18 +39,44 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
+            // Images & vidéos du bucket public : cache long (les fichiers sont
+            // immuables, chaque upload a un nom horodaté unique)
+            urlPattern: /^https:\/\/.*supabase\.co\/storage\/v1\/object\/public\/.*/i,
+            handler: 'CacheFirst',
+            options: { cacheName: 'supabase-media', expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 } },
+          },
+          {
             urlPattern: /^https:\/\/.*supabase\.co\/.*/i,
             handler: 'NetworkFirst',
             options: { cacheName: 'supabase-cache', expiration: { maxEntries: 50, maxAgeSeconds: 300 } },
           },
           {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',
-            options: { cacheName: 'google-fonts', expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+            options: { cacheName: 'google-fonts', expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+          },
+          {
+            // Tuiles de carte (page Livraison)
+            urlPattern: /^https:\/\/.*basemaps\.cartocdn\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: { cacheName: 'map-tiles', expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 } },
           },
         ],
       },
     }),
   ],
+  build: {
+    // Découpage du bundle : React et Supabase en chunks séparés (cache navigateur
+    // stable entre les déploiements), Leaflet est déjà en import dynamique.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
   server: { port: 5173, open: true },
 });

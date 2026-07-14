@@ -3,6 +3,9 @@ name: Build Android APK
 on:
   push:
     branches: [main]
+    # Les changements Mon Coloc IA ne doivent pas relancer un build APK SERAO.
+    paths-ignore:
+      - 'mon-coloc-ia/**'
   workflow_dispatch:
 
 jobs:
