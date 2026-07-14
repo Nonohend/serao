@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import NotificationsToggle from '@/components/NotificationsToggle';
 import type { ProfilUtilisateur } from '@/lib/types';
 
 const EQUIPEMENTS: {
@@ -213,6 +214,8 @@ export default function ProfilForm({ onLogout }: { onLogout?: () => void }) {
       >
         {enregistrement ? 'Enregistrement…' : 'Enregistrer le profil'}
       </button>
+
+      <NotificationsToggle />
 
       <section className="glass p-5">
         <p className="text-sm text-slate-300">À propos</p>
